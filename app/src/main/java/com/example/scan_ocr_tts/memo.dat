@@ -1,0 +1,8 @@
+OcrScreen(
+when (screen)
+when 
+fun App
+fun Navigation
+NavHost(
+rememberNavController
+Color.Cyan

@@ -1,0 +1,369 @@
+package com.example.scan_ocr_tts
+
+import android.graphics.Bitmap
+import android.graphics.Bitmap.createBitmap
+import android.util.Log
+// import androidx.compose.remote.creation.compose.state.max
+import com.google.mlkit.vision.common.InputImage
+import org.opencv.android.Utils
+import org.opencv.core.Mat
+import org.opencv.imgproc.Imgproc
+import org.opencv.core.CvType
+import org.opencv.core.Size
+import org.opencv.core.*
+
+import kotlin.math.max
+import kotlin.math.min
+
+import org.opencv.core.Point
+
+
+import com.google.mlkit.vision.text.TextRecognition
+
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+
+
+
+object ImageProcessing {
+
+    fun toGrayscale(inputBitmap: Bitmap): Bitmap {
+        val src = Mat()
+        val gray = Mat()
+
+        // Bitmap → Mat
+        Utils.bitmapToMat(inputBitmap, src)
+
+        // Conversion en niveaux de gris
+        Imgproc.cvtColor(src, gray, Imgproc.COLOR_BGR2GRAY)
+
+
+
+
+
+        // Reconvertir en Bitmap
+        val resultBitmap = Bitmap.createBitmap(
+            gray.cols(),
+            gray.rows(),
+            Bitmap.Config.ARGB_8888
+        )
+
+        Utils.matToBitmap(gray, resultBitmap)
+
+        src.release()
+        gray.release()
+
+        return resultBitmap
+    }
+
+
+    fun toAdaptiveThreshold(
+        bitmap: Bitmap,
+        whiteThreshold: Float,  // <-- Float au lieu de Int, nom changé
+        contrastBoost: Float
+    ): Pair<Bitmap, List<Rect>> {
+
+        val src = Mat()
+        val gray = Mat()
+
+        val thresh = Mat()
+
+        Utils.bitmapToMat(bitmap, src)
+
+
+        // Gris
+        Imgproc.cvtColor(src, gray, Imgproc.COLOR_BGR2GRAY)
+        Imgproc.equalizeHist(gray, gray)
+// Amplifie ou adoucit le contraste selon le slider utilisateur
+        Core.normalize(gray, gray, 0.0, 255.0, Core.NORM_MINMAX)
+
+
+
+
+// Taille du noyau adaptée au contraste choisi par l'utilisateur
+        val kernelSize = (13 * contrastBoost).coerceIn(9f, 17f)
+
+        val blackhatKernel = Imgproc.getStructuringElement(
+            Imgproc.MORPH_RECT,
+            Size(kernelSize.toDouble(), kernelSize.toDouble())
+        )
+
+
+        val blackhat = Mat()
+        Imgproc.morphologyEx(gray, blackhat, Imgproc.MORPH_BLACKHAT, blackhatKernel)
+
+        // 🔵 Binarisation automatique du texte détecté
+
+        val otsuValue = Imgproc.threshold(
+            blackhat,
+            thresh,
+            0.0,
+            255.0,
+            Imgproc.THRESH_BINARY + Imgproc.THRESH_OTSU
+        )
+
+// Rend le texte plus épais ou plus fin selon le slider
+        val adjusted = (otsuValue * contrastBoost).coerceIn(0.0, 255.0)
+
+        Imgproc.threshold(
+            blackhat,
+            thresh,
+            adjusted,
+            255.0,
+            Imgproc.THRESH_BINARY
+        )
+
+        // 🔵 Regroupe les lettres pour former des lignes / paragraphes
+// Fusion forte horizontale, faible verticale
+// Plus le slider est haut → moins on relie horizontalement (évite de coller les colonnes)
+        val horizontalSize = (25.0 / contrastBoost).coerceIn(12.0, 28.0)
+
+
+        val lineKernel = Imgproc.getStructuringElement(
+            Imgproc.MORPH_RECT,
+            Size(horizontalSize, 5.0)
+        )
+        Imgproc.morphologyEx(thresh, thresh, Imgproc.MORPH_CLOSE, lineKernel)
+        lineKernel.release()
+
+// 2️⃣ Relie légèrement les lignes proches verticalement (sans coller les colonnes)
+        val blockKernel = Imgproc.getStructuringElement(
+            Imgproc.MORPH_RECT,
+            Size(12.0, 18.0)
+        )
+        Imgproc.morphologyEx(thresh, thresh, Imgproc.MORPH_CLOSE, blockKernel)
+        blockKernel.release()
+
+
+
+
+        val contours = mutableListOf<MatOfPoint>()
+
+// Détection des contours dans l'image seuillée
+        val hierarchy = Mat()
+        Imgproc.findContours(
+            thresh,
+            contours,
+            hierarchy,
+            Imgproc.RETR_EXTERNAL,
+            Imgproc.CHAIN_APPROX_SIMPLE
+        )
+
+
+        val detectedRects = mutableListOf<Rect>()
+        val filteredRects = mutableListOf<Rect>()
+
+        for (contour in contours) {
+            val rect = Imgproc.boundingRect(contour)
+            // if (isInsideImage(rect, imageRects)) continue
+
+            // ❌ Ignore les cadres trop étroits (bruit)
+            if (rect.width < src.width() * 0.15) continue
+
+            val area = rect.width * rect.height
+            val aspect = rect.width.toFloat() / rect.height
+            // ❌ Supprimer seulement les petits blocs horizontaux (titres isolés, bruit)
+            if (rect.height < thresh.height() * 0.05 && aspect > 1.5f) continue
+            val imageArea = thresh.width() * thresh.height().toDouble()
+            // ❌ Trop petit = bruit
+            if (area < 1200) continue
+            // ❌ Trop haut = plutôt une image qu'une ligne de texte
+            if (rect.height > thresh.height() * 0.9) continue
+            // ✅ Zone valide → on la garde
+            detectedRects.add(rect)
+        }
+// 🔴 Supprimer les rectangles inclus dans d'autres (petits cadres dans grands)
+        for (r in detectedRects) {
+            var insideAnother = false
+
+            for (other in detectedRects) {
+                if (r == other) continue
+
+                if (
+                    r.x >= other.x &&
+                    r.y >= other.y &&
+                    r.x + r.width <= other.x + other.width &&
+                    r.y + r.height <= other.y + other.height
+                ) {
+                    insideAnother = true
+                    break
+                }
+            }
+
+            if (!insideAnother) {
+                filteredRects.add(r)
+            }
+
+
+
+        }
+
+
+// ✅ Convertir l'image (thresh) en Bitmap
+        val resultBitmap = Bitmap.createBitmap(
+            thresh.cols(),
+            thresh.rows(),
+            Bitmap.Config.ARGB_8888
+        )
+        //Modifie Original
+        // Utils.matToBitmap(src, resultBitmap)
+        Utils.matToBitmap(thresh, resultBitmap)
+
+
+
+
+
+// ✅ Retourner Bitmap + rectangles détectés
+        // return Pair(resultBitmap, detectedRects)
+        // return Pair(resultBitmap, filteredRects)
+
+
+// Appliquez un seuillage pour convertir l'image en noir et blanc strict
+        Imgproc.threshold(thresh, thresh, 128.0, 255.0, Imgproc.THRESH_BINARY)
+
+
+
+
+// Maintenant, convertissez thresh en Bitmap (qui est une image binaire)
+        val finalResultBitmap = createBitmap(
+            thresh.cols(),
+            thresh.rows(),
+            Bitmap.Config.ARGB_8888
+        )
+        Utils.matToBitmap(thresh, finalResultBitmap)
+
+// Filtrage des blocs en fonction du pourcentage de blanc
+        val whiteFilteredRects = filterBlocksByWhitePercentage(
+            finalResultBitmap,
+            filteredRects,
+            whiteThreshold  // 👈 Utiliser le slider
+        )
+
+        src.release()
+        gray.release()
+        hierarchy.release()
+        thresh.release()
+        blackhat.release()
+        blackhatKernel.release()
+
+
+        return Pair(resultBitmap, whiteFilteredRects)
+
+    }
+
+
+    fun strengthenText(src: Bitmap): Bitmap {
+        val mat = Mat()
+        Utils.bitmapToMat(src, mat)
+
+        // Petit noyau pour épaissir légèrement le texte
+        val kernel = Imgproc.getStructuringElement(
+            Imgproc.MORPH_RECT,
+            Size(2.0, 2.0)
+        )
+
+        Imgproc.dilate(mat, mat, kernel)
+
+        val out = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+        Utils.matToBitmap(mat, out)
+        mat.release()
+        return out
+    }
+
+
+    fun adjustContrast(src: Bitmap, contrast: Float): Bitmap {
+        val bmp = src.copy(Bitmap.Config.ARGB_8888, true)
+        val width = bmp.width
+        val height = bmp.height
+
+        val pixels = IntArray(width * height)
+        bmp.getPixels(pixels, 0, width, 0, 0, width, height)
+
+        for (i in pixels.indices) {
+            val color = pixels[i]
+
+            val r = ((android.graphics.Color.red(color) - 128) * contrast + 128).toInt()
+                .coerceIn(0, 255)
+            val g = ((android.graphics.Color.green(color) - 128) * contrast + 128).toInt()
+                .coerceIn(0, 255)
+            val b = ((android.graphics.Color.blue(color) - 128) * contrast + 128).toInt()
+                .coerceIn(0, 255)
+
+            pixels[i] = android.graphics.Color.rgb(r, g, b)
+        }
+
+        bmp.setPixels(pixels, 0, width, 0, 0, width, height)
+        return bmp
+    }
+
+    // Ajoute à la fin du fichier ImageProcessing.kt, avant la dernière accolade fermante '}'
+
+    fun filterBlocksByWhitePercentage(
+        bitmap: Bitmap,
+        rects: List<Rect>,
+        minWhitePercentage: Float = 40.0f
+    ): List<Rect> {
+        return rects.filter { rect ->
+            calculateWhitePercentage(bitmap, rect) >= minWhitePercentage
+        }
+    }
+
+    fun calculateWhitePercentage(bitmap: Bitmap, rect: Rect): Float {
+        var whitePixels = 0
+        var totalPixels = 0
+
+        // S'assurer que le rectangle est dans les limites de l'image
+        val safeX = rect.x.coerceAtLeast(0)
+        val safeY = rect.y.coerceAtLeast(0)
+        // Calculer la largeur/hauteur disponible sans dépasser les bords du bitmap
+        val safeWidth = min(rect.width, bitmap.width - safeX)
+        val safeHeight = min(rect.height, bitmap.height - safeY)
+
+        val safeRect = Rect(
+            safeX, safeY, safeWidth, safeHeight
+        )
+
+        val width = safeRect.width
+        val height = safeRect.height
+
+        if (width <= 0 || height <= 0) return 0f
+
+        // Échantillonner pour performance
+        val step = max(1, min(width, height) / 15)
+
+        // Corrige aussi la boucle pour éviter les dépassements
+        for (x in 0 until width step step) {
+            for (y in 0 until height step step) {
+                val pixelX = safeRect.x + x
+                val pixelY = safeRect.y + y
+
+                // Vérification supplémentaire de sécurité
+                if (pixelX >= 0 && pixelX < bitmap.width &&
+                    pixelY >= 0 && pixelY < bitmap.height) {
+
+                    val pixel = bitmap.getPixel(pixelX, pixelY)
+
+                    // Convertir en niveaux de gris
+                    val r = android.graphics.Color.red(pixel)
+                    val g = android.graphics.Color.green(pixel)
+                    val b = android.graphics.Color.blue(pixel)
+
+                    // Formule de luminance standard
+                    val luminance = 0.299 * r + 0.587 * g + 0.114 * b
+
+                    // Considérer comme "blanc" si luminance > 200 (sur 255)
+                    if (luminance > 200) {
+                        whitePixels++
+                    }
+
+                    totalPixels++
+                }
+            }
+        }
+
+        return if (totalPixels > 0) {
+            (whitePixels.toFloat() / totalPixels.toFloat()) * 100
+        } else {
+            0f
+        }
+    }
+}
