@@ -1,59 +1,57 @@
 
+# PDF TTS Reader Project
 
-# Projet TTS PDF Reader
+This Android project helps to read PDF files using Text-to-Speech (TTS). It performs a text search on each page of the PDF and allows the user to adjust settings to facilitate text search within the document pages.
 
-Ce projet Android aide à lire des fichiers PDF en utilisant la synthèse vocale (TTS). Il effectue une recherche de texte dans chaque page du PDF et permet à l'utilisateur de configurer des réglages pour faciliter la recherche du texte dans les pages du document.
+**This is a personal project that I am sharing here. I plan to gradually improve and optimize it.**
 
-**Il s'agit d'un projet personnel que je partage ici. Je compte l'améliorer et l'optimiser progressivement.**
+## Features
 
-## Fonctionnalités
+* Read PDF files in TTS (Text-to-Speech) mode.
+* Search for text on each page of the PDF, page by page.
+* Configurable settings to adjust text search within pages.
+* Simple and user-friendly interface for easy use.
 
-* Lecture de fichiers PDF en mode TTS (Text-to-Speech).
-* Recherche du texte dans chaque page du PDF, page par page.
-* Paramètres configurables pour ajuster la recherche du texte dans les pages.
-* Interface simple et conviviale pour une utilisation facile.
+[User Manual](./Doc/User_Manual.pdf)
 
-[Manuel d'utilisation](./Doc/Manuel_d_utilisation.pdf)
+## Requirements
 
-## Prérequis
-
-* Android 13 (API niveau 33) ou version supérieure.
-* Accès à un fichier PDF à lire.
-* Une connexion internet (pour télécharger des dépendances si nécessaire).
+* Android 13 (API level 33) or higher.
+* Access to a PDF file to read.
+* An internet connection (to download dependencies if needed).
 
 ## Installation
 
-1. Clonez ce projet sur votre machine :
+1. Clone this project to your machine:
 
    ```bash
-   git clone https://github.com/ton-utilisateur/ton-projet.git
+   git clone https://github.com/your-username/your-project.git
    ```
 
-2. Ouvrez le projet dans Android Studio.
+2. Open the project in Android Studio.
 
-3. Compilez et exécutez l'application sur un appareil ou un émulateur.
+3. Build and run the application on a device or emulator.
 
-## Configuration du projet
+## Project Setup
 
-Le projet utilise les versions suivantes de SDK et de bibliothèques :
+The project uses the following SDK and library versions:
 
-* **Compile SDK** : 36 (Android 14)
-* **Min SDK** : 21 (Android 5.0 Lollipop)
-* **Application ID** : `com.example.scan_ocr_tts`
-* **Bibliothèques** :
+* **Compile SDK**: 36 (Android 14)
+* **Min SDK**: 21 (Android 5.0 Lollipop)
+* **Application ID**: `com.example.scan_ocr_tts`
+* **Libraries**:
 
   * Kotlin
   * Jetpack Compose
 
-## Utilisation
+## Usage
 
-1. Ouvrez un fichier PDF à lire.
-2. Configurez les réglages pour ajuster la recherche de texte.
-3. Lancez la lecture et laissez l'application lire le texte page par page.
-
+1. Open a PDF file to read.
+2. Adjust the settings to modify the text search.
+3. Start reading and let the app read the text page by page.
 
 ## License
 
-Ce projet est sous la licence MIT - voir le fichier [LICENSE](LICENSE) pour plus de détails.
+This project is under the MIT license – see the [LICENSE](LICENSE) file for more details.
 
 
