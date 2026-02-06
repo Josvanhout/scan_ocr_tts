@@ -59,7 +59,9 @@ object ImageProcessing {
     fun toAdaptiveThreshold(
         bitmap: Bitmap,
         whiteThreshold: Float,  // <-- Float au lieu de Int, nom changé
-        contrastBoost: Float
+        contrastBoost: Float,
+        preGrayAdjust: Float = 0.0f,  // <-- NOUVEAU PARAMÈTRE ICI
+        minWidthRatio: Float = 0.15f
     ): Pair<Bitmap, List<Rect>> {
 
         val src = Mat()
@@ -68,6 +70,17 @@ object ImageProcessing {
         val thresh = Mat()
 
         Utils.bitmapToMat(bitmap, src)
+
+    // 👇 AJOUTER ICI - Début de l'ajustement pré-gris
+            if (preGrayAdjust != 0.0f) {
+                val contrast = 1.0f + kotlin.math.abs(preGrayAdjust)
+                val brightness = if (preGrayAdjust < 0) 30.0 * preGrayAdjust else -20.0 * preGrayAdjust
+                Log.d("PRE_GRAY_DEBUG", "Contraste: $contrast, Luminosité: $brightness")
+                src.convertTo(src, -1, contrast.toDouble(), brightness)
+                Log.d("PRE_GRAY_DEBUG", "Pixel après ajustement: ${src.get(0, 0)?.contentToString()}")
+            }
+    // 👆 FIN de l'ajustement pré-gris
+
 
 
         // Gris
@@ -157,7 +170,7 @@ object ImageProcessing {
             // if (isInsideImage(rect, imageRects)) continue
 
             // ❌ Ignore les cadres trop étroits (bruit)
-            if (rect.width < src.width() * 0.15) continue
+            if (rect.width < src.width() * minWidthRatio) continue
 
             val area = rect.width * rect.height
             val aspect = rect.width.toFloat() / rect.height

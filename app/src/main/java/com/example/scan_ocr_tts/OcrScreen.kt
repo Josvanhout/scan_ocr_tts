@@ -1,80 +1,104 @@
 package com.example.scan_ocr_tts
 
+
 import android.content.Context
-
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-
-import androidx.exifinterface.media.ExifInterface
+import android.content.pm.ActivityInfo
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Matrix
-
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
-import androidx.compose.material3.Slider
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.runtime.saveable.rememberSaveable
-
+import android.os.Bundle
+import android.os.Environment
+import android.speech.tts.TextToSpeech
+import android.util.Log
+import androidx.activity.ComponentActivity
+import androidx.camera.core.Logger.e
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import android.graphics.Bitmap
-import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.ScreenRotation
+import androidx.compose.material.icons.filled.Screenshot
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tonality
-
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import java.io.File
-import android.graphics.BitmapFactory
-import androidx.compose.runtime.*
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.exifinterface.media.ExifInterface
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
-
-import android.util.Log
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
-
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.gestures.detectTapGestures
-
-import androidx.compose.foundation.layout.Arrangement
-
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.asImageBitmap
-
-import androidx.compose.ui.unit.dp
-
-import android.speech.tts.TextToSpeech
-import androidx.compose.foundation.background
-import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.unit.sp
-
+import java.io.File
 import java.util.Locale
 
+data class Bookmark(
+    val pdfPath: String,
+    val pageIndex: Int,
+    val thresholdBias: Float,
+    val rectPadding: Float,
+    val contrastBoost: Float,
+    val speechRate: Float,
+    val lastUpdated: Long = System.currentTimeMillis()
+)
 
-import androidx.compose.ui.text.input.KeyboardType
-
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoFixHigh
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.School
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
-
-import androidx.compose.material3.IconButton
-
+data class BookmarksData(
+    val bookmarks: MutableList<Bookmark> = mutableListOf(),
+    var dernierLivre: String? = null
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -99,50 +123,100 @@ fun OcrScreen(
     onGoToPage: ((Int) -> Unit)? = null,
     currentPageIndex: Int = 0,
     totalPages: Int = 1
-)
-
-
-{
+) {
     var recognizedText by remember { mutableStateOf("") }
 
     val context = LocalContext.current
 
-    val prefs = context.applicationContext.getSharedPreferences("ocr_settings", Context.MODE_PRIVATE)
+    // 👇 AJOUTER CES LIGNES ICI
+    // Extraire le nom du fichier PDF à partir du chemin
+    val pdfFileName by remember(pdfIdentity) {
+        mutableStateOf(
+            try {
+                // Décoder les caractères URL (%2F, %20, etc.)
+                val decodedPath = java.net.URLDecoder.decode(pdfIdentity, "UTF-8")
+                // Extraire juste le nom du fichier
+                File(decodedPath).nameWithoutExtension.ifEmpty { "Document PDF" }
+            } catch (e: Exception) {
+                // Fallback : prendre la dernière partie du chemin
+                pdfIdentity.substringAfterLast("/").substringBeforeLast(".")
+                    .ifEmpty { "Document PDF" }
+            }
+        )
+    }
+
+
+    val prefs =
+        context.applicationContext.getSharedPreferences("ocr_settings", Context.MODE_PRIVATE)
 
     val currentPdfPath = pdfIdentity
 
+    var minWidthRatio by rememberSaveable { mutableStateOf(0.15f) } // Valeur initiale = 15%
+    val initialPreGrayAdjust = prefs.getFloat("preGrayAdjust", 0.0f)
+    var preGrayAdjust by rememberSaveable { mutableStateOf(initialPreGrayAdjust) }
     var ttsAlreadyFinished by remember { mutableStateOf(false) }
     var pageAdvanceTriggered by remember { mutableStateOf(false) }
 
+
     val savedPdfPath = prefs.getString("lastPdfPath", null)
     val savedPage = prefs.getInt("lastPdfPage", 0)
+    val savedMinWidthRatio = prefs.getFloat("minWidthRatio", 0.15f)
+    val savedPreGrayAdjust = prefs.getFloat("preGrayAdjust", 0.0f)
+
+    // Variables pour le cache OCR (au début de la fonction OcrScreen)
+    var OCR_lu by remember { mutableStateOf(false) }
+
 
     var lastRestoredPdf by rememberSaveable { mutableStateOf<String?>(null) }
 
+    // NOUVELLES VARIABLES
+    var lignes_tts by remember { mutableStateOf<List<String>>(emptyList()) }
+    var index_lise_tts by remember { mutableStateOf(0) }
+    var pause_tts by remember { mutableStateOf(false) }
+
+
     LaunchedEffect(pdfIdentity) {
         if (lastRestoredPdf != pdfIdentity) {
+            Log.d("BOOKMARK_DEBUG", "=== DÉBUT RESTAURATION ===")
+            Log.d("BOOKMARK_DEBUG", "pdfIdentity: $pdfIdentity")
 
-            val savedPdfPath = prefs.getString("lastPdfPath", null)
-            val savedPage = prefs.getInt("lastPdfPage", 0)
+            // Restauration depuis le JSON
+            val bookmarkData = getBookmarkFromJson(context, pdfIdentity)
+            val savedPdfPath = bookmarkData["pdfPath"] ?: prefs.getString("lastPdfPath", null)
+            val savedPage =
+                if (savedPdfPath == pdfIdentity) bookmarkData["pageIndex"]?.toIntOrNull()
+                    ?: 0 else 0
 
-            Log.d("PAGE_TRACE", "RESTORE check: pdfIdentity=$pdfIdentity savedPdfPath=$savedPdfPath savedPage=$savedPage")
+            Log.d("BOOKMARK_DEBUG", "savedPdfPath: $savedPdfPath")
+            Log.d("BOOKMARK_DEBUG", "savedPage: $savedPage")
+            Log.d(
+                "BOOKMARK_DEBUG",
+                "Comparison: savedPdfPath == pdfIdentity? ${savedPdfPath == pdfIdentity}"
+            )
 
             if (savedPdfPath == pdfIdentity) {
-                Log.d("PAGE_TRACE", "RESTORE goTo savedPage=$savedPage")
+                // Appliquer les réglages sauvegardés
+                bookmarkData["thresholdBias"]?.toFloatOrNull()?.let(onThresholdChange)
+                bookmarkData["rectPadding"]?.toFloatOrNull()?.let(onRectPaddingChange)
+                bookmarkData["contrastBoost"]?.toFloatOrNull()?.let(onContrastBoostChange)
+                bookmarkData["speechRate"]?.toFloatOrNull()?.let(onSpeechRateChange)
+                minWidthRatio = bookmarkData["minWidthRatio"]?.toFloatOrNull() ?: 0.15f
+                preGrayAdjust = bookmarkData["preGrayAdjust"]?.toFloatOrNull() ?: 0.0f
+
+                Log.d("BOOKMARK_DEBUG", "✓ RESTAURATION: Aller à page $savedPage")
                 onGoToPage?.invoke(savedPage)
             } else {
-                Log.d("PAGE_TRACE", "RESTORE new PDF → page 0")
+                Log.d("BOOKMARK_DEBUG", "✗ NOUVEAU PDF: Aller à page 0")
                 onGoToPage?.invoke(0)
             }
 
             lastRestoredPdf = pdfIdentity
+            Log.d("BOOKMARK_DEBUG", "=== FIN RESTAURATION ===")
         }
     }
 
 
-
-
-    var contrastBoostMode by remember { mutableStateOf(false) }
+    var contrastBoostMode by remember { mutableStateOf(true) }
 
 
     var displayBitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -158,7 +232,7 @@ fun OcrScreen(
     var showControls by rememberSaveable { mutableStateOf(false) }
     var showProcessed by rememberSaveable { mutableStateOf(false) }
 
-
+    var autoPlayEnabled by remember { mutableStateOf(false) }
     var tts by remember { mutableStateOf<TextToSpeech?>(null) }
     var isSpeaking by remember { mutableStateOf(false) }
 
@@ -174,15 +248,23 @@ fun OcrScreen(
             if (status == TextToSpeech.SUCCESS) {
                 tts?.language = Locale.FRANCE
                 tts?.setSpeechRate(speechRate)
-//                tts?.setSpeechRate(1.0f)
-                tts?.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+
+
+                tts?.setOnUtteranceProgressListener(object :
+                    android.speech.tts.UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) {}
 
                     override fun onDone(utteranceId: String?) {
-                        if (!pageAdvanceTriggered) {
-                            pageAdvanceTriggered = true
-                            isSpeaking = false
-                            onNextPage?.invoke()
+                        Log.d("TTS_DEBUG", "onDone: $utteranceId")
+
+                        if (utteranceId == "FINAL_PART") {
+                            Log.d("TTS_DEBUG", "Lecture totale terminée, bascule sur le thread UI...")
+
+                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                // AJOUT DE ?.invoke() pour corriger l'erreur de l'image 2
+                                isSpeaking = false
+                                onNextPage?.invoke()
+                            }
                         }
                     }
 
@@ -202,19 +284,30 @@ fun OcrScreen(
     }
 
 
-
-    var textBlocks by remember { mutableStateOf<List<com.google.mlkit.vision.text.Text.TextBlock>>(emptyList()) }
+    var textBlocks by remember {
+        mutableStateOf<List<com.google.mlkit.vision.text.Text.TextBlock>>(
+            emptyList()
+        )
+    }
 //    var disabledBlocks by remember { mutableStateOf(setOf<Int>()) }
     var selectedRectIndices by remember { mutableStateOf(setOf<Int>()) }
 
 
 
 
-    LaunchedEffect(imageFile, thresholdBias, rectPadding, contrastBoost, contrastBoostMode)
+    LaunchedEffect(
+        imageFile,
+        thresholdBias,
+        rectPadding,
+        contrastBoost,
+        contrastBoostMode,
+        minWidthRatio,
+        preGrayAdjust
+    )
     {
+        OCR_lu = false
 
-
-    Log.d("PDF_DEBUG", "OcrScreen reçoit imageFile = ${imageFile.absolutePath}")
+        Log.d("PDF_DEBUG", "OcrScreen reçoit imageFile = ${imageFile.absolutePath}")
 
         val bitmap = BitmapFactory.decodeFile(imageFile.absolutePath)
 
@@ -225,7 +318,10 @@ fun OcrScreen(
 
 // 👉 NOUVEAU : passage en niveaux de gris avec OpenCV
         val effectiveContrast = contrastBoost * (if (contrastBoostMode) 1.35f else 1.0f)
-        Log.d("BOOST_DEBUG", "contrastBoost=$contrastBoost  boostMode=$contrastBoostMode  effective=$effectiveContrast")
+        Log.d(
+            "BOOST_DEBUG",
+            "contrastBoost=$contrastBoost  boostMode=$contrastBoostMode  effective=$effectiveContrast"
+        )
 
         val contrastBitmap = ImageProcessing.adjustContrast(originalBitmap, effectiveContrast)
 
@@ -234,9 +330,12 @@ fun OcrScreen(
 
         val (processedBitmap, detectedRects) = ImageProcessing.toAdaptiveThreshold(
             contrastBitmap,
-            thresholdBias,  // 👈 Utiliser thresholdBias comme seuil de blanc (20-80%)
-            contrastBoost
+            thresholdBias,
+            contrastBoost,
+            preGrayAdjust,
+            minWidthRatio  // <-- AJOUTER CE PARAMÈTRE
         )
+        Log.d("PRE_GRAY_CALL", "Appel toAdaptiveThreshold avec preGrayAdjust = $preGrayAdjust")
 
         val boostedBitmap = if (contrastBoostMode) {
             ImageProcessing.strengthenText(processedBitmap)
@@ -266,6 +365,44 @@ fun OcrScreen(
                 Log.d("NAV_DEBUG", "OCR blocs détectés: ${visionText.textBlocks.size}")
                 textBlocks = visionText.textBlocks
                 recognizedText = "Sélectionne les zones à garder, puis appuie sur le bouton."
+
+                // ← CORRECTION ICI : utiliser handleTtsButtonClick pour autoPlay
+                if (autoPlayEnabled && textBlocks.isNotEmpty()) {
+                    // Marquer OCR comme lu
+                    OCR_lu = true
+
+                    // Construire le texte à partir des textBlocks déjà détectés
+                    val ocrText = textBlocks.joinToString("\n") { it.text }
+                    val finalText = cleanOcrTextForTts(ocrText)
+                    lastSpokenText = finalText
+
+                    // Lancer handleTtsButtonClick pour la lecture auto
+                    handleTtsButtonClick(
+                        isSpeaking = false,  // On part de l'état "non parlant"
+                        tts = tts,
+                        selectedRectIndices = selectedRectIndices,  // Utiliser les zones sélectionnées
+                        rectangles = rectangles,
+                        originalDisplayBitmap = originalDisplayBitmap,
+                        speechRate = speechRate,
+                        detectedTtsLocale = detectedTtsLocale,
+                        onSpeechStateChange = { newState ->
+                            isSpeaking = newState
+                            // Si la lecture démarre, mettez à jour l'état
+                        },
+                        onLocaleDetected = { locale ->
+                            detectedTtsLocale = locale
+                        },
+                        onPageAdvanceReset = {
+                            pageAdvanceTriggered = false
+                        },
+                        onTextProcessed = { text ->
+                            lastSpokenText = text
+                        },
+                        onSetOcrLu = {
+                            OCR_lu = true
+                        }
+                    )
+                }
             }
             .addOnFailureListener { e ->
                 Log.e("OCR_DEBUG", "Erreur OCR", e)
@@ -276,10 +413,10 @@ fun OcrScreen(
     }
 
 
-
-
-
+// TOOLBAR
     Column(modifier = Modifier.fillMaxSize()) {
+
+
 
         CenterAlignedTopAppBar(
             title = {
@@ -288,12 +425,14 @@ fun OcrScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     var pageInput by remember { mutableStateOf("") }
-                    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+                    val keyboardController =
+                        androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
                     val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
 
-
+// Compteur pages
                     Text(
                         text = "${currentPageIndex + 1} / $totalPages",
+                        fontSize = 12.sp,
                         modifier = Modifier.pointerInput(Unit) {
                             detectTapGestures(
                                 onTap = {
@@ -330,28 +469,49 @@ fun OcrScreen(
                     )
 
 
+//                    Spacer(modifier = Modifier.width(8.dp))
+//
+//                    Spacer(modifier = Modifier.weight(1f))
+
+
+// Ajoutez juste avant le bouton contrastBoostMode
+                    IconButton(onClick = {
+                        val file = File(
+                            context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
+                            "bookmarks.json"
+                        )
+                        val content = if (file.exists()) file.readText() else "Fichier vide"
+                        Log.d("JSON_VIEWER", "Contenu JSON:\n$content")
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Screenshot,
+                            contentDescription = "Log JSON",
+                            tint = Color.White
+                        )
+                    }
+
+
+//                    FlipScreenButton()
+
+                    IconButton(onClick = { contrastBoostMode = !contrastBoostMode }) {
+                        Icon(
+                            imageVector = Icons.Default.Tonality,
+                            contentDescription = "Boost contraste",
+                            tint = if (contrastBoostMode) Color.Red else Color.White
+                        )
+                    }
+
+                    IconButton(onClick = { showControls = !showControls }) {
+                        Icon(
+                            imageVector = Icons.Default.Tune,
+                            contentDescription = "Afficher les réglages",
+                            tint = if (showControls) Color.Red else Color.White
+                        )
+                    }
 
 
 
 
-                    Spacer(modifier = Modifier.weight(1f))
-
-
-                        IconButton(onClick = { contrastBoostMode = !contrastBoostMode }) {
-                            Icon(
-                                imageVector = Icons.Default.Tonality, // icône réglages/boost
-                                contentDescription = "Boost contraste",
-                                tint = if (contrastBoostMode) Color.Red else Color.White
-                            )
-                        }
-
-                        IconButton(onClick = { showControls = !showControls }) {
-                            Icon(
-                                imageVector = Icons.Default.Tune,
-                                contentDescription = "Afficher les réglages",
-                                tint = if (showControls) Color.Red else Color.White
-                            )
-                        }
 
 
 
@@ -394,40 +554,40 @@ fun OcrScreen(
                         }
 
 
-                        IconButton(onClick = {
-                            if (isSpeaking) {
-                                tts?.stop()
-                                isSpeaking = false
-                            } else {
-                                if (lastSpokenText.isNotBlank()) {
-                                    speakLongText(tts, lastSpokenText)
-                                    isSpeaking = true
-                                }
-                            }
-                        }) {
-                            Icon(
-                                imageVector = if (isSpeaking) Icons.Default.Stop else Icons.Default.PlayArrow,
-                                contentDescription = "Lecture OCR",
-                                tint = if (isSpeaking) Color.Green else Color.White
-                            )
-                        }
+
+
 
 
                         IconButton(onClick = {
                             val pdfKey = imageFile.parentFile?.name ?: "defaultPdf"
 
+                            // 1. Sauvegarde SharedPreferences (existant)
                             prefs.edit()
                                 .putFloat("thresholdBias", thresholdBias)
                                 .putFloat("rectPadding", rectPadding)
                                 .putFloat("contrastBoost", contrastBoost)
                                 .putFloat("speechRate", speechRate)
+                                .putFloat("minWidthRatio", minWidthRatio)
+                                .putFloat("preGrayAdjust", preGrayAdjust)
                                 .putString("lastPdfPath", currentPdfPath)
                                 .putInt("lastPdfPage", currentPageIndex)
                                 .apply()
 
-                            onNext()
-                        })
-                         {
+                            // 2. NOUVEAU : Sauvegarde JSON
+                            saveBookmarkToJson(
+                                context = context,
+                                pdfPath = currentPdfPath,
+                                pageIndex = currentPageIndex,
+                                thresholdBias = thresholdBias,
+                                rectPadding = rectPadding,
+                                contrastBoost = contrastBoost,
+                                speechRate = speechRate,
+                                minWidthRatio = minWidthRatio,
+                                preGrayAdjust = preGrayAdjust
+                            )
+
+                            onNext()  // ← RETOUR À L'ACCUEIL
+                        }) {
                             Icon(
                                 imageVector = Icons.Default.Home,
                                 contentDescription = "Accueil"
@@ -435,8 +595,6 @@ fun OcrScreen(
                         }
 
                         Spacer(modifier = Modifier.width(12.dp))
-
-
 
 
                     }
@@ -450,6 +608,29 @@ fun OcrScreen(
                 .height(36.dp)
 
         )
+
+// Label nom du pdf
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF0D47A1)) // Couleur de fond bleue
+                .padding(vertical = 4.dp, horizontal = 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = pdfFileName,
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+                textAlign = TextAlign.Center
+            )
+        }
+
         Box(modifier = Modifier.fillMaxSize()) {
             val showResult = recognizedText.isNotBlank() &&
                     recognizedText != "Sélectionne les zones à garder, puis appuie sur le bouton."
@@ -509,7 +690,7 @@ fun OcrScreen(
                                                 } else {
                                                     selectedRectIndices + index  // Sélectionner
                                                 }
-
+                                            OCR_lu = false
                                             // Log pour vérifier si le rectangle a été sélectionné/désélectionné
                                             Log.d(
                                                 "RectangleSelection",
@@ -585,26 +766,51 @@ fun OcrScreen(
             }
 
             if (!showResult) Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .navigationBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 0.dp),
-                    verticalArrangement = Arrangement.Bottom
-                ) {
-
-//                Text(
-//                    text = "Sensibilité détection : ${thresholdBias.toInt()}",
-//                    color = Color.White
-//                )
+                modifier = Modifier
+                    .fillMaxSize()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 0.dp),
+                verticalArrangement = Arrangement.Bottom
+            ) {
 
 
+// SLIDERS
                 if (showControls) {
                     Column {
 
+// Pré-traitement gris
                         Text(
+                            text = "Pré-traitement gris : ${"%.2f".format(preGrayAdjust)}",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF0D47A1))
+                                .padding(vertical = 2.dp, horizontal = 8.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Slider(
+                            value = preGrayAdjust,
+                            onValueChange = { preGrayAdjust = it },
+                            valueRange = -1.0f..2.0f,
+                            steps = 20,
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp)
+                                .height(24.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+//Seuil blanc minimum
+
+                         Text(
                             text = "Seuil blanc min : ${thresholdBias.toInt()}",
                             color = Color.White,
                             fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(Color(0xFF0D47A1))
@@ -621,316 +827,289 @@ fun OcrScreen(
                                 .height(24.dp)
                         )
 
+                        Spacer(modifier = Modifier.height(8.dp))
 
-                Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Marge cadre : ${rectPadding.toInt()} px",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color(0xFF0D47A1))
-                                .padding(vertical = 2.dp, horizontal = 8.dp)
-                        )
-
-                Slider(
-                    value = rectPadding,
-                    onValueChange = onRectPaddingChange,
-                    valueRange = 0f..18f,
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp)
-                        .height(24.dp)   // ← réduit la hauteur visuelle
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
+// Sensibilité au texte
                         Text(
                             text = "Sensibilité texte : ${"%.2f".format(contrastBoost)}",
 
                             color = Color.White,
                             fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(Color(0xFF0D47A1))
                                 .padding(vertical = 2.dp, horizontal = 8.dp)
                         )
 
-                Slider(
-                    value = contrastBoost,
-                    onValueChange = onContrastBoostChange,
-                    valueRange = 0.9f..1.35f,
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp)
-                        .height(24.dp)   // ← réduit la hauteur visuelle
-                )
+                        Slider(
+                            value = contrastBoost,
+                            onValueChange = onContrastBoostChange,
+                            valueRange = 0.1f..1.35f,
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp)
+                                .height(24.dp)   // ← réduit la hauteur visuelle
+                        )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
+
+
+
+//Largeur min des colonnes
+                        Text(
+                            text = "Largeur colonnes min : ${(minWidthRatio * 100).toInt()}%",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF0D47A1))
+                                .padding(vertical = 2.dp, horizontal = 8.dp)
+                        )
+
+                        Slider(
+                            value = minWidthRatio,
+                            onValueChange = { newValue ->
+                                minWidthRatio = newValue
+                                // Optionnel : relancer le traitement ici ou via un bouton
+                            },
+                            valueRange = 0.05f..0.5f,
+                            steps = 45,
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp)
+                                .height(24.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+//Marge des cadres
+                        Text(
+                            text = "Marge cadre : ${rectPadding.toInt()} px",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF0D47A1))
+                                .padding(vertical = 2.dp, horizontal = 8.dp)
+                        )
+
+                        Slider(
+                            value = rectPadding,
+                            onValueChange = onRectPaddingChange,
+                            valueRange = 0f..18f,
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp)
+                                .height(24.dp)   // ← réduit la hauteur visuelle
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+// Vitesse de lecture
+
 
                         Text(
                             text = "Vitesse de lecture : ${"%.2f".format(speechRate)}x",
                             color = Color.White,
                             fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(Color(0xFF0D47A1))
                                 .padding(vertical = 2.dp, horizontal = 8.dp)
                         )
 
-                Slider(
-                    value = speechRate,
-                    onValueChange = onSpeechRateChange,
-                    valueRange = 0.5f..1.5f,
-                    steps = 19,
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp)
-                        .height(24.dp)   // ← réduit la hauteur visuelle
-                )
+                        Slider(
+                            value = speechRate,
+                            onValueChange = onSpeechRateChange,
+                            valueRange = 0.5f..1.5f,
+                            steps = 19,
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp)
+                                .height(24.dp)   // ← réduit la hauteur visuelle
+                        )
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
 
 
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp)
-                            .navigationBarsPadding()
-                            .padding(bottom = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .navigationBarsPadding()
+                        .padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+
+                    // ⬅ PAGE PRÉCÉDENTE
+                    Button(
+                        onClick = { onPreviousPage?.invoke() },
+                        enabled = currentPageIndex > 0 && onPreviousPage != null
                     ) {
+                        Text("<")
+                    }
 
-                        // ⬅ PAGE PRÉCÉDENTE
-                        Button(
-                            onClick = { onPreviousPage?.invoke() },
-                            enabled = currentPageIndex > 0 && onPreviousPage != null
-                        ) {
-                            Text("<")
-                        }
-
-                        // 🔍 BOUTON OCR
-                        // 🔍 BOUTON OCR
-                        Button(
-                            onClick = {
-                                val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-
-                                val verticalTolerance = 60
-
-//                                val selectedRects = selectedRectIndices
-//                                    .map { rectangles[it] }
-//                                    // .sortedWith(compareBy<Rect> { it.left }.thenBy { it.top })
-//                                    .sortedWith { r1, r2 ->
-//                                        val dy = kotlin.math.abs(r1.top - r2.top)
-//
-//                                        if (dy <= verticalTolerance) {
-//                                            // Même ligne approximative → gauche à droite
-//                                            r1.left - r2.left
-//                                        } else {
-//                                            // Lignes différentes → haut à bas
-//                                            r1.top - r2.top
-//                                        }
-//                                    }
-                                val horizontalTolerance = 40  // ou 50 selon ton image
-                                val selectedRects = selectedRectIndices
-                                    .map { rectangles[it] }
-                                    .sortedWith { r1, r2 ->
-                                        val dx = kotlin.math.abs(r1.left - r2.left)
-
-                                        if (dx <= horizontalTolerance) {
-                                            // Même colonne approximative → haut à bas
-                                            r1.top - r2.top
-                                        } else {
-                                            // Colonnes différentes → gauche à droite
-                                            r1.left - r2.left
-                                        }
-                                    }
-
-
-                                if (originalDisplayBitmap == null || selectedRects.isEmpty()) return@Button
-
-                                var pending = selectedRects.size
-                                val collectedText = StringBuilder()
-
-                                selectedRects.forEach { rect ->
-
-                                    val safeLeft = rect.left.coerceAtLeast(0)
-                                    val safeTop = rect.top.coerceAtLeast(0)
-                                    val safeWidth = rect.width().coerceAtMost(originalDisplayBitmap!!.width - safeLeft)
-                                    val safeHeight = rect.height().coerceAtMost(originalDisplayBitmap!!.height - safeTop)
-
-                                    if (safeWidth <= 0 || safeHeight <= 0) {
-                                        pending--
-                                        return@forEach
-                                    }
-
-                                    val cropped = Bitmap.createBitmap(
-                                        originalDisplayBitmap!!,
-                                        safeLeft,
-                                        safeTop,
-                                        safeWidth,
-                                        safeHeight
+                    // 🔍 BOUTON OCR avec bascule TTS/Stop
+                    Button(
+                        onClick = {
+                            if (isSpeaking) {
+                                // Arrêter la lecture
+                                tts?.stop()
+                                isSpeaking = false
+                            } else {
+                                if (OCR_lu && lastSpokenText.isNotBlank()) {
+                                    // OCR déjà fait → juste lire
+                                    Log.d("NANDO", "TTS directe")
+                                    pageAdvanceTriggered = false
+                                    tts?.language = detectedTtsLocale ?: Locale.FRENCH
+                                    tts?.setSpeechRate(speechRate)
+                                    speakLongText(tts, lastSpokenText)
+                                    isSpeaking = true
+                                } else {
+                                    // Premier OCR pour cette page
+                                    Log.d("NANDO", "Premier OCR")
+                                    handleTtsButtonClick(
+                                        isSpeaking = isSpeaking,
+                                        tts = tts,
+                                        selectedRectIndices = selectedRectIndices,
+                                        rectangles = rectangles,
+                                        originalDisplayBitmap = originalDisplayBitmap,
+                                        speechRate = speechRate,
+                                        detectedTtsLocale = detectedTtsLocale,
+                                        onSpeechStateChange = { newState -> isSpeaking = newState },
+                                        onLocaleDetected = { locale -> detectedTtsLocale = locale },
+                                        onPageAdvanceReset = { pageAdvanceTriggered = false },
+                                        onTextProcessed = { text -> lastSpokenText = text },
+                                        onSetOcrLu = { OCR_lu = true }
                                     )
-
-                                    val image = InputImage.fromBitmap(cropped, 0)
-
-                                    recognizer.process(image)
-                                        .addOnSuccessListener { visionText ->
-                                            collectedText.appendLine(visionText.text)
-                                            pending--
-                                            if (pending == 0) {
-                                                val finalText = cleanOcrTextForTts(collectedText.toString())
-
-                                                if (finalText.isNotBlank()) {
-                                                    lastSpokenText = finalText
-
-                                                    if (detectedTtsLocale == null) {
-                                                        detectLanguageAndSetTts(finalText, tts) { locale ->
-                                                            detectedTtsLocale = locale
-                                                            ttsAlreadyFinished = false   // 🔹 RESET ICI
-                                                            speakLongText(tts, finalText)
-                                                            isSpeaking = true
-                                                            pageAdvanceTriggered = false
-                                                        }
-                                                    } else {
-                                                        tts?.language = detectedTtsLocale
-                                                        ttsAlreadyFinished = false   // 🔹 RESET ICI
-                                                        speakLongText(tts, finalText)
-                                                        isSpeaking = true
-                                                        pageAdvanceTriggered = false
-                                                    }
-                                                }
-
-                                            }
-                                        }
-                                        .addOnFailureListener {
-                                            pending--
-                                        }
                                 }
                             }
-                        ) {
-                            Text("OCR")
                         }
-
-
-
-                        // ➡ PAGE SUIVANTE
-                        Button(
-                            onClick = { onNextPage?.invoke() },
-                            enabled = currentPageIndex < totalPages - 1 && onNextPage != null
-                        ) {
-                            Text(">")
-                        }
+                    ) {
+                        Text(if (isSpeaking) "Stop" else "TTS")
                     }
 
 
+                    // ➡ PAGE SUIVANTE
+                    Button(
+                        onClick = { onNextPage?.invoke() },
+                        enabled = currentPageIndex < totalPages - 1 && onNextPage != null
+                    ) {
+                        Text(">")
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Checkbox(
+                        checked = autoPlayEnabled,
+                        onCheckedChange = { autoPlayEnabled = it }
+                    )
                 }
 
 
             }
 
 
-            if (recognizedText.isNotBlank() &&
-                recognizedText != "Sélectionne les zones à garder, puis appuie sur le bouton."
-            ) {
+        }
+
+
+        if (recognizedText.isNotBlank() &&
+            recognizedText != "Sélectionne les zones à garder, puis appuie sur le bouton."
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .navigationBarsPadding()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            )
+            {
+
+                // 📜 Texte OCR scrollable
                 Column(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .navigationBarsPadding()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.SpaceBetween
-                )
-                {
-
-                    // 📜 Texte OCR scrollable
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .verticalScroll(rememberScrollState())
-                    ) {
-                        Text(
-                            text = recognizedText,
-                            color = Color.White
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // 🎛️ Barre de boutons TTS
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        Button(onClick = {
-                            if (recognizedText.isNotBlank()) {
-                                lastSpokenText = recognizedText
-                                speakLongText(tts, recognizedText)
-                                isSpeaking = true
-                            }
-                        }) {
-                            Text("Play")
-                        }
-
-
-                        Button(onClick = {
-                            tts?.stop()
-                            isSpeaking = false
-                        }) {
-                            Text("Pause")
-                        }
-
-
-
-                        Button(onClick = {
-                            tts?.stop()
-                            isSpeaking = false
-                            recognizedText = ""   // ⬅ retour à l’écran PDF avec sélection
-
-                        }) {
-                            Text("Retour")
-                        }
-
-                    }
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        text = recognizedText,
+                        color = Color.White
+                    )
                 }
 
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 🎛️ Barre de boutons TTS
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Button(onClick = {
+                        if (recognizedText.isNotBlank()) {
+                            lastSpokenText = recognizedText
+                            speakLongText(tts, recognizedText)
+                            isSpeaking = true
+                        }
+                    }) {
+                        Text("Play")
+                    }
+
+
+                    Button(onClick = {
+                        tts?.stop()
+                        isSpeaking = false
+                    }) {
+                        Text("Pause")
+                    }
 
 
 
+                    Button(onClick = {
+                        tts?.stop()
+                        isSpeaking = false
+                        recognizedText = ""   // ⬅ retour à l’écran PDF avec sélection
 
+                    }) {
+                        Text("Retour")
+                    }
 
+                }
             }
 
-
-
-
         }
 
     }
 
+} // Fin de OcrScreen
 
 
 
 
-    fun loadCorrectlyOrientedBitmap(path: String): Bitmap {
-        val bitmap = BitmapFactory.decodeFile(path)
 
-        val exif = ExifInterface(path)
-        val orientation = exif.getAttributeInt(
-            ExifInterface.TAG_ORIENTATION,
-            ExifInterface.ORIENTATION_NORMAL
-        )
+fun loadCorrectlyOrientedBitmap(path: String): Bitmap {
+    val bitmap = BitmapFactory.decodeFile(path)
 
-        val matrix = Matrix()
-        when (orientation) {
-            ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
-            ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
-            ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
-        }
+    val exif = ExifInterface(path)
+    val orientation = exif.getAttributeInt(
+        ExifInterface.TAG_ORIENTATION,
+        ExifInterface.ORIENTATION_NORMAL
+    )
 
-        return Bitmap.createBitmap(
-            bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true
-        )
+    val matrix = Matrix()
+    when (orientation) {
+        ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+        ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+        ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
     }
+
+    return Bitmap.createBitmap(
+        bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true
+    )
+
+}
 
 fun cleanOcrTextForTts(raw: String): String {
     return raw
@@ -1046,45 +1225,469 @@ fun detectLanguageAndSetTts(
         }
 }
 
-//fun speakLongText(tts: TextToSpeech?, text: String) {
-//    if (tts == null) return
-//
-//    val maxLength = 3500  // sécurité sous la limite Android (~4000)
-//
-//    val parts = text.chunked(maxLength)
-//
-//    tts.stop()
-//
-//    parts.forEachIndexed { index, part ->
-//        tts.speak(
-//            part,
-//
-//            if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD,
-//            null,
-//            "OCR_PART_$index"
-//        )
-//    }
-//}
 
 
 
-fun speakLongText(tts: TextToSpeech?, text: String) {
-    if (tts == null) return
 
-    val maxLength = 3500
-    val parts = text.chunked(maxLength)
+// Ajoutez ceci AVANT saveBookmarkToJson
 
-    tts.stop()
 
-    parts.forEachIndexed { index, part ->
-        val safePart =
-            if (index == 0) "\u200B\u200B\u200B$part" else part // 3 zero-width spaces
+fun saveBookmarkToJson(
+    context: Context,
+    pdfPath: String,
+    pageIndex: Int,
+    thresholdBias: Float,
+    rectPadding: Float,
+    contrastBoost: Float,
+    speechRate: Float,
+    minWidthRatio: Float,
+    preGrayAdjust: Float
+) {
+    try {
+        Log.d("BOOKMARK", "Sauvegarde JSON pour: $pdfPath page $pageIndex")
 
-        tts.speak(
-            safePart,
-            if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD,
-            null,
-            "OCR_PART_$index"
+        val fileName = "bookmarks.json"
+        val file = File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), fileName)
+        file.parentFile?.mkdirs()
+
+        // 1. Lire les signets existants
+        // 1. Lire les signets existants
+        val bookmarksList = mutableListOf<Map<String, Any>>()
+
+        if (file.exists() && file.length() > 0) {
+            try {
+                val jsonString = file.readText()
+                Log.d("BOOKMARK", "JSON existant: $jsonString")
+
+                // Utiliser une approche simple mais fonctionnelle
+                // Chercher tous les objets bookmark
+                val bookmarkRegex = "\\{[^{}]*\"pdfPath\"[^{}]*\\}".toRegex()
+                val matches = bookmarkRegex.findAll(jsonString)
+
+                matches.forEach { match ->
+                    val bookmarkStr = match.value
+                    // Extraire toutes les propriétés
+                    val pdfPath = "\"pdfPath\"\\s*:\\s*\"([^\"]+)\"".toRegex().find(bookmarkStr)?.groupValues?.get(1)
+                    val pageIndex = "\"pageIndex\"\\s*:\\s*(\\d+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
+                    val thresholdBias = "\"thresholdBias\"\\s*:\\s*([\\d.]+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
+                    val rectPadding = "\"rectPadding\"\\s*:\\s*([\\d.]+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
+                    val contrastBoost = "\"contrastBoost\"\\s*:\\s*([\\d.]+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
+                    val speechRate = "\"speechRate\"\\s*:\\s*([\\d.]+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
+                    val minWidthRatio = "\"minWidthRatio\"\\s*:\\s*([\\d.]+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
+                    val preGrayAdjust = "\"preGrayAdjust\"\\s*:\\s*([\\d.-]+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
+
+                    if (pdfPath != null) {
+                        bookmarksList.add(mapOf(
+                            "pdfPath" to pdfPath,
+                            "pageIndex" to (pageIndex?.toIntOrNull() ?: 0),
+                            "thresholdBias" to (thresholdBias?.toFloatOrNull() ?: 40f),
+                            "rectPadding" to (rectPadding?.toFloatOrNull() ?: 0f),
+                            "contrastBoost" to (contrastBoost?.toFloatOrNull() ?: 1f),
+                            "speechRate" to (speechRate?.toFloatOrNull() ?: 1f),
+                            "minWidthRatio" to (minWidthRatio?.toFloatOrNull() ?: 0.15f),
+                            "preGrayAdjust" to (preGrayAdjust?.toFloatOrNull() ?: 0.0f)
+                        ))
+                        Log.d("BOOKMARK", "Lu: $pdfPath")
+                    }
+                }
+
+                Log.d("BOOKMARK", "Trouvé ${bookmarksList.size} signets existants")
+            } catch (e: Exception) {
+                Log.e("BOOKMARK", "Erreur lecture JSON", e)
+            }
+        }
+
+        // 2. Retirer l'ancienne entrée si elle existe
+        bookmarksList.removeAll { it["pdfPath"] == pdfPath }
+
+        // 3. Ajouter le nouveau signet
+        // 3. Mettre à jour OU ajouter le nouveau signet
+        val existingIndex = bookmarksList.indexOfFirst { it["pdfPath"] == pdfPath }
+        val newBookmark = mapOf(
+            "pdfPath" to pdfPath,
+            "pageIndex" to pageIndex,
+            "thresholdBias" to thresholdBias,
+            "rectPadding" to rectPadding,
+            "contrastBoost" to contrastBoost,
+            "speechRate" to speechRate,
+            "minWidthRatio" to minWidthRatio,
+            "preGrayAdjust" to preGrayAdjust
+        )
+
+        if (existingIndex >= 0) {
+            // Remplacer l'ancien
+            bookmarksList[existingIndex] = newBookmark
+        } else {
+            // Ajouter un nouveau
+            bookmarksList.add(newBookmark)
+        }
+
+        // 4. Construire le JSON final
+        val bookmarksJson = StringBuilder()
+        bookmarksJson.append("{\n")
+        bookmarksJson.append("  \"bookmarks\": [\n")
+
+        bookmarksList.forEachIndexed { index, bookmark ->
+            bookmarksJson.append("    {\n")
+            bookmarksJson.append("      \"pdfPath\": \"${bookmark["pdfPath"]}\",\n")
+            bookmarksJson.append("      \"pageIndex\": ${bookmark["pageIndex"]},\n")
+            bookmarksJson.append("      \"thresholdBias\": ${bookmark["thresholdBias"]},\n")
+            bookmarksJson.append("      \"rectPadding\": ${bookmark["rectPadding"]},\n")
+            bookmarksJson.append("      \"contrastBoost\": ${bookmark["contrastBoost"]},\n")
+            bookmarksJson.append("      \"speechRate\": ${bookmark["speechRate"]},\n")
+            bookmarksJson.append("      \"minWidthRatio\": ${bookmark["minWidthRatio"]},\n")
+            bookmarksJson.append("      \"preGrayAdjust\": ${bookmark["preGrayAdjust"]}\n")
+            bookmarksJson.append("    }")
+            if (index < bookmarksList.size - 1) bookmarksJson.append(",")
+            bookmarksJson.append("\n")
+        }
+
+        bookmarksJson.append("  ],\n")
+        bookmarksJson.append("  \"dernierLivre\": \"$pdfPath\"\n")
+        bookmarksJson.append("}")
+
+        // 5. Sauvegarder
+        file.writeText(bookmarksJson.toString())
+        Log.d("BOOKMARK", "Fichier JSON mis à jour avec ${bookmarksList.size} signets")
+
+        // Lire et logguer le JSON sauvegardé
+        val savedContent = file.readText()
+        Log.d("BOOKMARK", "=== CONTENU JSON SAUVÉ ===")
+        Log.d("BOOKMARK", savedContent)
+        Log.d("BOOKMARK", "==========================")
+
+    } catch (e: Exception) {
+        Log.e("BOOKMARK", "ERREUR CRITIQUE: ${e.message}")
+        e.printStackTrace()
+    }
+}
+
+
+fun getBookmarkFromJson(context: Context, targetPdfPath: String? = null): Map<String, String> {
+    Log.d("BOOKMARK", "Recherche signet pour: $targetPdfPath")
+    return try {
+        val fileName = "bookmarks.json"
+        val file = File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), fileName)
+
+        if (!file.exists() || file.length() == 0L) {
+            return emptyMap()
+        }
+
+        val jsonString = file.readText()
+
+        // Si targetPdfPath est fourni, chercher CE livre spécifique
+        // Sinon, chercher le dernier livre
+        val pdfPathToFind = targetPdfPath ?: {
+            val dernierLivreRegex = "\"dernierLivre\"\\s*:\\s*\"([^\"]+)\"".toRegex()
+            dernierLivreRegex.find(jsonString)?.groupValues?.get(1)
+        }()
+
+        if (pdfPathToFind == null) {
+            return emptyMap()
+        }
+
+        // Chercher la page de ce livre
+        val escapedPath = Regex.escape(pdfPathToFind)
+        val bookmarkRegex = ("\"pdfPath\"\\s*:\\s*\"$escapedPath\"\\s*," +
+                "\\s*\"pageIndex\"\\s*:\\s*(\\d+)\\s*," +
+                "\\s*\"thresholdBias\"\\s*:\\s*([\\d.]+)\\s*," +
+                "\\s*\"rectPadding\"\\s*:\\s*([\\d.]+)\\s*," +
+                "\\s*\"contrastBoost\"\\s*:\\s*([\\d.]+)\\s*," +
+                "\\s*\"speechRate\"\\s*:\\s*([\\d.]+)\\s*," +
+                "\\s*\"minWidthRatio\"\\s*:\\s*([\\d.]+)\\s*," +  // <-- AJOUTER une virgule à la fin
+                "\\s*\"preGrayAdjust\"\\s*:\\s*([\\d.-]+)").toRegex()  // <-- AJOUTER CETTE LIGNE
+
+        val bookmarkMatch = bookmarkRegex.find(jsonString)
+
+        if (bookmarkMatch != null) {
+            mapOf(
+                "pdfPath" to pdfPathToFind,
+                "pageIndex" to (bookmarkMatch.groupValues.getOrNull(1) ?: "0"),
+                "thresholdBias" to (bookmarkMatch.groupValues.getOrNull(2) ?: "40.0"),
+                "rectPadding" to (bookmarkMatch.groupValues.getOrNull(3) ?: "0.0"),
+                "contrastBoost" to (bookmarkMatch.groupValues.getOrNull(4) ?: "1.0"),
+                "speechRate" to (bookmarkMatch.groupValues.getOrNull(5) ?: "1.0"),
+                "minWidthRatio" to (bookmarkMatch.groupValues.getOrNull(6) ?: "0.15"),
+                "preGrayAdjust" to (bookmarkMatch.groupValues.getOrNull(7) ?: "0.0")
+            )
+        } else {
+            mapOf("pdfPath" to pdfPathToFind, "pageIndex" to "0")
+        }
+
+    } catch (e: Exception) {
+        Log.e("BOOKMARK", "Erreur recherche signet", e)
+        emptyMap()
+    }
+}
+
+
+fun handleTtsButtonClick(
+    isSpeaking: Boolean,
+    tts: TextToSpeech?,
+    selectedRectIndices: Set<Int>,
+    rectangles: List<android.graphics.Rect>,
+    originalDisplayBitmap: Bitmap?,
+    speechRate: Float,
+    detectedTtsLocale: Locale?,
+    onSpeechStateChange: (Boolean) -> Unit,
+    onLocaleDetected: (Locale) -> Unit,
+    onPageAdvanceReset: () -> Unit,
+    onTextProcessed: (String) -> Unit,
+    onSetOcrLu: () -> Unit
+) {
+    if (isSpeaking) {
+        // Si en train de parler → arrêter
+        tts?.stop()
+        onSpeechStateChange(false)
+    } else {
+
+        onSetOcrLu()
+        // Si pas en train de parler → lancer l'OCR et TTS
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+
+        val verticalTolerance = 60
+        val horizontalTolerance = 40
+        val selectedRects = selectedRectIndices
+            .map { rectangles[it] }
+            .sortedWith { r1, r2 ->
+                val dx = kotlin.math.abs(r1.left - r2.left)
+                if (dx <= horizontalTolerance) {
+                    r1.top - r2.top
+                } else {
+                    r1.left - r2.left
+                }
+            }
+
+        if (originalDisplayBitmap == null || selectedRects.isEmpty()) return
+
+        var pending = selectedRects.size
+        val collectedText = StringBuilder()
+
+        selectedRects.forEach { rect ->
+            val safeLeft = rect.left.coerceAtLeast(0)
+            val safeTop = rect.top.coerceAtLeast(0)
+            val safeWidth = rect.width().coerceAtMost(originalDisplayBitmap!!.width - safeLeft)
+            val safeHeight = rect.height().coerceAtMost(originalDisplayBitmap!!.height - safeTop)
+
+            if (safeWidth <= 0 || safeHeight <= 0) {
+                pending--
+                return@forEach
+            }
+
+            val cropped = Bitmap.createBitmap(
+                originalDisplayBitmap!!,
+                safeLeft,
+                safeTop,
+                safeWidth,
+                safeHeight
+            )
+
+            val image = InputImage.fromBitmap(cropped, 0)
+
+            recognizer.process(image)
+                .addOnSuccessListener { visionText ->
+                    collectedText.appendLine(visionText.text)
+                    pending--
+                    if (pending == 0) {
+                        val finalText = cleanOcrTextForTts(collectedText.toString())
+
+                        if (finalText.isNotBlank()) {
+                            onTextProcessed(finalText)
+
+                            if (detectedTtsLocale == null) {
+                                detectLanguageAndSetTts(finalText, tts) { locale ->
+                                    onLocaleDetected(locale)
+                                    tts?.language = locale
+                                    tts?.setSpeechRate(speechRate)
+                                    onPageAdvanceReset()
+                                    speakLongText(tts, finalText)
+                                    onSpeechStateChange(true)
+                                }
+                            } else {
+                                tts?.language = detectedTtsLocale
+                                tts?.setSpeechRate(speechRate)
+                                onPageAdvanceReset()
+                                speakLongText(tts, finalText)
+                                onSpeechStateChange(true)
+                            }
+                        }
+                    }
+                }
+                .addOnFailureListener {
+                    pending--
+                }
+        }
+    }
+}
+
+
+@Composable
+fun FlipScreenButton() {
+    // Etat de l'orientation de l'écran (true = portrait inversé, false = portrait normal)
+    val (isFlipped, setIsFlipped) = remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    IconButton(onClick = {
+        val newState = !isFlipped
+        setIsFlipped(newState)
+
+        // Basculer entre portrait normal et portrait inversé
+        val activity = context as? ComponentActivity
+        activity?.let {
+            if (newState) {
+                // Portrait inversé (rotation 180°)
+                it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+            } else {
+                // Portrait normal
+                it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
+        }
+    }) {
+        Icon(
+            imageVector = Icons.Default.ScreenRotation, // Icône appropriée pour rotation
+            contentDescription = if (isFlipped)
+                "Retour à l'orientation normale"
+            else "Retourner l'écran (180°)",
+            tint = if (isFlipped) Color.Red else Color.White
         )
     }
 }
+
+fun speakLongText(tts: TextToSpeech?, text: String) {
+    if (tts == null) {
+        Log.d("TTS_DEBUG", "speakLongText: tts est null")
+        return
+    }
+
+    Log.d("TTS_DEBUG", "=== DÉBUT speakLongText ===")
+    Log.d("TTS_DEBUG", "Texte d'entrée (${text.length} chars): ${text.take(100)}...")
+
+    // 1. Échapper les caractères XML
+    val escapedText = text
+        .replace("&", "&amp;")
+        .replace("\"", "&quot;")
+        .replace("'", "&apos;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("...", ",")
+        .replace("ndlr", "")
+
+    // 2. Ajouter les pauses SSML
+// 2. Ajouter les pauses SSML (une seule pause par fin de phrase ou ligne)
+    val textWithPauses = escapedText
+        // Remplace ponctuation (.!?) suivie d'espaces ou retours chariots par ponctuation + 1 break
+        .replace(Regex("([.!?])\\s*"), "$1 <break time=\"500ms\"/> ")
+        // Remplace les sauts de ligne restants (sans ponctuation) par 1 break
+        .replace(Regex("(?<!<break time=\"500ms\"/> )\\n"), " <break time=\"500ms\"/> ")
+
+    // 3. CRÉER LE SSML CORRECT AVEC EN-TÊTE XML
+
+    val baseText = textWithPauses
+    val zws = "\u200B\u200B\u200B" // Ajoutez cette ligne ici
+
+
+
+
+// 4. Diviser le texte en parties (en coupant après une balise break si possible)
+    val maxLength = 500 //3500
+    val parts = mutableListOf<String>()
+    var remaining = baseText // On utilise baseText au lieu de ssmlText
+
+    // parts.add(remaining)
+
+    Log.d("TTS_DEBUG", "Nombre de parties: ${parts.size}")
+
+    if (remaining.length <= maxLength) {
+        parts.add(remaining)
+        Log.d("TTS_DEBUG", "Texte court, pas de division nécessaire")
+    } else {
+        Log.d("TTS_DEBUG", "Division du texte nécessaire")
+
+        var loopCount = 0
+
+        while (remaining.length > maxLength) {
+            loopCount++
+
+            Log.d("TTS_DEBUG", "Boucle #$loopCount - remaining: ${remaining.length} chars")
+            Log.d("TTS_DEBUG", "Boucle while - remaining.length: ${remaining.length}, maxLength: $maxLength")
+
+            val searchWindow = remaining.substring(0, maxLength)
+            Log.d("TTS_DEBUG", "searchWindow.length: ${searchWindow.length}")
+
+            val lastBreakIndex = searchWindow.lastIndexOf("<break time=\"500ms\"/>")
+            Log.d("TTS_DEBUG", "lastBreakIndex: $lastBreakIndex")
+
+
+            val splitIndex = if (lastBreakIndex > 0) {
+                // Couper après le break SSML
+                lastBreakIndex + "<break time=\"500ms\"/>".length
+            } else {
+                // 2. Sinon chercher la fin d'une phrase
+                val lastSentenceEnd = searchWindow.lastIndexOfAny(listOf(". ", "! ", "? "))
+                if (lastSentenceEnd > 0) {
+                    lastSentenceEnd + 1
+                } else {
+                    // 3. Sinon couper au dernier espace
+                    val lastSpace = searchWindow.lastIndexOf(' ')
+                    if (lastSpace > 0) lastSpace else maxLength
+                }
+            }
+
+            // Ajouter la partie
+            parts.add(remaining.substring(0, splitIndex))
+            // Continuer avec le reste
+            remaining = remaining.substring(splitIndex)
+        }
+
+        // Ajouter le dernier morceau
+        if (remaining.isNotBlank()) {
+            parts.add(remaining)
+        }
+        Log.d("TTS_DEBUG", "Boucle exécutée $loopCount fois")
+    }
+
+
+
+    Log.d("TTS_DEBUG", "Nombre de parties créées: ${parts.size}")
+    parts.forEachIndexed { index, part ->
+        Log.d("TTS_DEBUG", "Partie $index: ${part.length} caractères - début: ${part.take(50)}...")
+    }
+
+
+    // 5. Arrêter toute lecture en cours
+    tts.stop()
+    Thread.sleep(100) // Petit délai après stop
+
+// 6. Envoyer chaque partie enveloppée dans son propre SSML
+    parts.forEachIndexed { index, part ->
+        val prefix = if (index == 0) zws else ""
+
+        val safePart = """<?xml version="1.0" encoding="UTF-8"?>
+    <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis">
+    $prefix$part
+    </speak>"""
+
+        // Définir l'ID
+        val utteranceId = if (index == parts.size - 1) "FINAL_PART" else "OCR_PART_$index"
+
+        // Définir le mode : Flush pour le premier, Add pour les suivants
+        val queueMode = if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+
+        val params = Bundle().apply {
+            putString(TextToSpeech.Engine.KEY_PARAM_STREAM, TextToSpeech.Engine.DEFAULT_STREAM.toString())
+            putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId)
+            putString(TextToSpeech.Engine.KEY_FEATURE_NETWORK_SYNTHESIS, "true")
+        }
+
+        Log.d("TTS_DEBUG", "Appel tts.speak() partie $index ($queueMode) avec ID: $utteranceId (${safePart.length} chars)")
+        tts.speak(safePart, queueMode, params, utteranceId)
+
+        // Petit délai entre les parties
+        if (index < parts.size - 1) {
+            Thread.sleep(50)
+        }
+    }
+
+    Log.d("TTS_DEBUG", "=== FIN speakLongText ===")
+}
+

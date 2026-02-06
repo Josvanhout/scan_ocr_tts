@@ -1,3 +1,0 @@
-ninja: Entering directory `C:\Projets_Android_Studio\scan_ocr_tts\opencv\.cxx\Debug\704v6b5o\x86'
-[1/2] Building CXX object CMakeFiles/opencv_jni_shared.dir/dummy.cpp.o
-[2/2] Linking CXX static library libopencv_jni_shared.a

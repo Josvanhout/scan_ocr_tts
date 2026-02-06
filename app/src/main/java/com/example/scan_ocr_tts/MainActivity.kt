@@ -1,6 +1,12 @@
 package com.example.scan_ocr_tts
 
-import ImportImageScreen
+
+
+import android.view.inputmethod.InputMethodManager
+
+
+
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
@@ -28,6 +34,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 
 
 class MainActivity : ComponentActivity() {
+
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()

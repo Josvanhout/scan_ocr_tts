@@ -27,6 +27,8 @@
 # 1. GARDE TOUTES TES CLASSES
 -keep class com.example.scan_ocr_tts.** { *; }
 
+-dontwarn javax.lang.model.element.Modifier
+
 # 2. OPENCV (CRITIQUE)
 -keep class org.opencv.** { *; }
 -dontwarn org.opencv.**

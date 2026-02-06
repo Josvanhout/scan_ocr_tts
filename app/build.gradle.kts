@@ -17,17 +17,22 @@ android {
         applicationId = "com.example.scan_ocr_tts"
         minSdk = 30
         targetSdk = 34  // ↓ Réduit aussi
-        versionCode = 5
-        versionName = "1.5"
+        versionCode = 6
+        versionName = "1.6"
+        resourceConfigurations += setOf("fr", "en", "es", "xxhdpi")
 
         // 🎯 OPTIMISATION RESSOURCES
-        resConfigs("fr", "en", "es")  // Langues uniquement
-        resConfigs("xxhdpi")          // Densité unique (la plus commune)
+        // Langues uniquement
+        // Densité unique (la plus commune)
 
         // 🚫 Désactive le multidex (tu n'as pas +64K méthodes)
         multiDexEnabled = false
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+
+
+
     }
 
     buildTypes {
@@ -44,8 +49,9 @@ android {
         }
         debug {
             // Active aussi en debug pour tester
-            isMinifyEnabled = true
-            isShrinkResources = true
+            isMinifyEnabled = false
+            isShrinkResources = false
+            // androidTestProguardFile("build/outputs/mapping/debugAndroidTest/missing_rules.txt")
         }
     }
 
@@ -90,6 +96,7 @@ dependencies {
         exclude(group = "org.bytedeco", module = "*")  // Exclut les bindings lourds
     }
 
+    implementation ("com.google.code.gson:gson:2.10.1")
     // 🎯 ML KIT OPTIMISÉ (UNE SEULE FOIS !)
     // REMPLACE par la version Play Services (plus légère)
     implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.0")
@@ -125,7 +132,9 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(libs.androidx.ui.test.junit4)
+    // androidTestImplementation(libs.androidx.ui.test.junit4)
+    androidTestImplementation ("androidx.compose.ui:ui-test-junit4:1.1.0")
+
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 }
