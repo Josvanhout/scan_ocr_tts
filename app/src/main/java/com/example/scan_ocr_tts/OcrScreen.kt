@@ -124,6 +124,10 @@ fun OcrScreen(
     currentPageIndex: Int = 0,
     totalPages: Int = 1
 ) {
+
+
+
+
     var recognizedText by remember { mutableStateOf("") }
 
     val context = LocalContext.current
@@ -239,11 +243,23 @@ fun OcrScreen(
     // var speechRate by rememberSaveable { mutableStateOf(prefs.getFloat("speechRate", 1.0f)) }
     var detectedTtsLocale by remember { mutableStateOf<Locale?>(null) }
 
+    //    var disabledBlocks by remember { mutableStateOf(setOf<Int>()) }
+    var selectedRectIndices by remember { mutableStateOf(setOf<Int>()) }
+
+    // Fonction locale pour désélectionner les rectangles
+    val handleRectanglesDeselection = {
+        selectedRectIndices = emptySet()
+    }
+
     LaunchedEffect(speechRate) {
         tts?.setSpeechRate(speechRate)
     }
 
+
+
     DisposableEffect(Unit) {
+
+
         tts = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 tts?.language = Locale.FRANCE
@@ -263,7 +279,17 @@ fun OcrScreen(
                             android.os.Handler(android.os.Looper.getMainLooper()).post {
                                 // AJOUT DE ?.invoke() pour corriger l'erreur de l'image 2
                                 isSpeaking = false
-                                onNextPage?.invoke()
+                                if (!autoPlayEnabled) {
+                                    // Mode lecture continue : avancer à la page suivante
+                                    onNextPage?.invoke()
+
+// en cours
+                                } else {
+                                    // Mode manuel : NE PAS avancer, mais décocher la case
+                                    autoPlayEnabled = false
+                                    handleRectanglesDeselection()
+
+                                }
                             }
                         }
                     }
@@ -289,9 +315,6 @@ fun OcrScreen(
             emptyList()
         )
     }
-//    var disabledBlocks by remember { mutableStateOf(setOf<Int>()) }
-    var selectedRectIndices by remember { mutableStateOf(setOf<Int>()) }
-
 
 
 
@@ -367,42 +390,7 @@ fun OcrScreen(
                 recognizedText = "Sélectionne les zones à garder, puis appuie sur le bouton."
 
                 // ← CORRECTION ICI : utiliser handleTtsButtonClick pour autoPlay
-                if (autoPlayEnabled && textBlocks.isNotEmpty()) {
-                    // Marquer OCR comme lu
-                    OCR_lu = true
 
-                    // Construire le texte à partir des textBlocks déjà détectés
-                    val ocrText = textBlocks.joinToString("\n") { it.text }
-                    val finalText = cleanOcrTextForTts(ocrText)
-                    lastSpokenText = finalText
-
-                    // Lancer handleTtsButtonClick pour la lecture auto
-                    handleTtsButtonClick(
-                        isSpeaking = false,  // On part de l'état "non parlant"
-                        tts = tts,
-                        selectedRectIndices = selectedRectIndices,  // Utiliser les zones sélectionnées
-                        rectangles = rectangles,
-                        originalDisplayBitmap = originalDisplayBitmap,
-                        speechRate = speechRate,
-                        detectedTtsLocale = detectedTtsLocale,
-                        onSpeechStateChange = { newState ->
-                            isSpeaking = newState
-                            // Si la lecture démarre, mettez à jour l'état
-                        },
-                        onLocaleDetected = { locale ->
-                            detectedTtsLocale = locale
-                        },
-                        onPageAdvanceReset = {
-                            pageAdvanceTriggered = false
-                        },
-                        onTextProcessed = { text ->
-                            lastSpokenText = text
-                        },
-                        onSetOcrLu = {
-                            OCR_lu = true
-                        }
-                    )
-                }
             }
             .addOnFailureListener { e ->
                 Log.e("OCR_DEBUG", "Erreur OCR", e)
@@ -474,24 +462,24 @@ fun OcrScreen(
 //                    Spacer(modifier = Modifier.weight(1f))
 
 
-// Ajoutez juste avant le bouton contrastBoostMode
-                    IconButton(onClick = {
-                        val file = File(
-                            context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
-                            "bookmarks.json"
-                        )
-                        val content = if (file.exists()) file.readText() else "Fichier vide"
-                        Log.d("JSON_VIEWER", "Contenu JSON:\n$content")
-                    }) {
-                        Icon(
-                            imageVector = Icons.Default.Screenshot,
-                            contentDescription = "Log JSON",
-                            tint = Color.White
-                        )
-                    }
+
+//                    IconButton(onClick = {
+//                        val file = File(
+//                            context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
+//                            "bookmarks.json"
+//                        )
+//                        val content = if (file.exists()) file.readText() else "Fichier vide"
+//                        Log.d("JSON_VIEWER", "Contenu JSON:\n$content")
+//                    }) {
+//                        Icon(
+//                            imageVector = Icons.Default.Screenshot,
+//                            contentDescription = "Log JSON",
+//                            tint = Color.White
+//                        )
+//                    }
 
 
-//                    FlipScreenButton()
+                    FlipScreenButton()
 
                     IconButton(onClick = { contrastBoostMode = !contrastBoostMode }) {
                         Icon(
@@ -1003,9 +991,57 @@ fun OcrScreen(
                     }
 
                     Spacer(modifier = Modifier.width(8.dp))
+                    // Texte à gauche de la checkbox
+                    Text(
+                        text = "Fragments",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(end = 4.dp)
+                    )
+
+                    // La checkbox
                     Checkbox(
                         checked = autoPlayEnabled,
-                        onCheckedChange = { autoPlayEnabled = it }
+                        onCheckedChange = {
+                            autoPlayEnabled = it
+
+                            // Si on vient de cocher la case (it = true), lancer la lecture
+                            if (it) {
+                                if (isSpeaking) {
+                                    // Si déjà en train de parler, arrêter
+                                    tts?.stop()
+                                    isSpeaking = false
+                                } else {
+                                    // Lancer la lecture TTS
+                                    if (OCR_lu && lastSpokenText.isNotBlank()) {
+                                        // OCR déjà fait → juste lire
+                                        Log.d("NANDO", "TTS via case cochée (OCR existant)")
+                                        pageAdvanceTriggered = false
+                                        tts?.language = detectedTtsLocale ?: Locale.FRENCH
+                                        tts?.setSpeechRate(speechRate)
+                                        speakLongText(tts, lastSpokenText)
+                                        isSpeaking = true
+                                    } else {
+                                        // Premier OCR pour cette page
+                                        Log.d("NANDO", "Premier OCR via case cochée")
+                                        handleTtsButtonClick(
+                                            isSpeaking = isSpeaking,
+                                            tts = tts,
+                                            selectedRectIndices = selectedRectIndices,
+                                            rectangles = rectangles,
+                                            originalDisplayBitmap = originalDisplayBitmap,
+                                            speechRate = speechRate,
+                                            detectedTtsLocale = detectedTtsLocale,
+                                            onSpeechStateChange = { newState -> isSpeaking = newState },
+                                            onLocaleDetected = { locale -> detectedTtsLocale = locale },
+                                            onPageAdvanceReset = { pageAdvanceTriggered = false },
+                                            onTextProcessed = { text -> lastSpokenText = text },
+                                            onSetOcrLu = { OCR_lu = true }
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     )
                 }
 
@@ -1691,3 +1727,24 @@ fun speakLongText(tts: TextToSpeech?, text: String) {
     Log.d("TTS_DEBUG", "=== FIN speakLongText ===")
 }
 
+fun handleTtsCompletion(
+    utteranceId: String?,
+    isSpeaking: Boolean,
+    autoPlayEnabled: Boolean,
+    onNextPage: (() -> Unit)?,
+    onAutoPlayEnabledChange: (Boolean) -> Unit,
+    onSelectedRectIndicesChange: (Set<Int>) -> Unit
+) {
+    if (utteranceId == "FINAL_PART") {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            if (!autoPlayEnabled) {
+                onNextPage?.invoke()
+            } else {
+                // Mode manuel : NE PAS avancer, mais décocher la case
+                onAutoPlayEnabledChange(false)
+                // ET désélectionner tous les cadres
+                onSelectedRectIndicesChange(emptySet())
+            }
+        }
+    }
+}

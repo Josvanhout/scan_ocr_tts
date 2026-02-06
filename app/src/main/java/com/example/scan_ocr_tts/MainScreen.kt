@@ -26,6 +26,7 @@ import androidx.core.content.ContextCompat
 import android.net.Uri
 
 import android.content.Context
+import android.widget.Toast
 
 import java.io.File
 import java.io.FileOutputStream
@@ -76,11 +77,17 @@ fun MainScreen(
     ) {
         Button(
             onClick = {
-                if (hasCameraPermission) {
-                    onScanClick()
-                } else {
-                    permissionLauncher.launch(Manifest.permission.CAMERA)
-                }
+                Toast.makeText(
+                    context,
+                    "Scanner une page - Fonctionnalité à venir prochainement",
+                    Toast.LENGTH_LONG
+                ).show()
+
+//                if (hasCameraPermission) {
+//                    onScanClick()
+//                } else {
+//                    permissionLauncher.launch(Manifest.permission.CAMERA)
+//                }
             }
 
         ) {
@@ -89,7 +96,18 @@ fun MainScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         Button(
-            onClick = { onImportClick() }
+            onClick = {
+
+                Toast.makeText(
+                    context,
+                    "Importer une image- Fonctionnalité à venir prochainement",
+                    Toast.LENGTH_LONG
+                ).show()
+
+            //    onImportClick()
+
+
+            }
         ) {
             Text("Importer une image")
         }
