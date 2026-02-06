@@ -12,7 +12,7 @@ This Android project helps to read PDF files using Text-to-Speech (TTS). It perf
 * Configurable settings to adjust text search within pages.
 * Simple and user-friendly interface for easy use.
 
-[User Manual](./Doc/User_Manual.pdf)
+[Manuel d'utilisation en français](./Doc/Manuel_d_utilisation.pdf)
 
 ## Requirements
 
