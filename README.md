@@ -13,6 +13,8 @@ Ce projet Android aide à lire des fichiers PDF en utilisant la synthèse vocale
 * Paramètres configurables pour ajuster la recherche du texte dans les pages.
 * Interface simple et conviviale pour une utilisation facile.
 
+[Manuel d'utilisation](./Doc/Manuel_d_utilisation.pdf)
+
 ## Prérequis
 
 * Android 13 (API niveau 33) ou version supérieure.
