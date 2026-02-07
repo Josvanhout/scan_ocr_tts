@@ -808,7 +808,7 @@ fun OcrScreen(
                         Slider(
                             value = thresholdBias,
                             onValueChange = onThresholdChange,
-                            valueRange = 20f..50f,  // 👈 Changer la plage (pourcentage de blanc)
+                            valueRange = 10f..60f,  // 👈 Changer la plage (pourcentage de blanc)
                             steps = 12,
                             modifier = Modifier
                                 .padding(horizontal = 16.dp)
@@ -878,7 +878,7 @@ fun OcrScreen(
                             fontWeight = FontWeight.ExtraBold,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Color(0xFF0D47A1))
+                                .background(Color(0xFF2E7D32))
                                 .padding(vertical = 2.dp, horizontal = 8.dp)
                         )
 
@@ -903,7 +903,7 @@ fun OcrScreen(
                             fontWeight = FontWeight.ExtraBold,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Color(0xFF0D47A1))
+                                .background(Color(0xFF2E7D32))
                                 .padding(vertical = 2.dp, horizontal = 8.dp)
                         )
 
@@ -1611,15 +1611,18 @@ fun speakLongText(tts: TextToSpeech?, text: String) {
     // 2. Ajouter les pauses SSML
 // 2. Ajouter les pauses SSML (une seule pause par fin de phrase ou ligne)
     val textWithPauses = escapedText
+
+        .replace(Regex("\\.{2,}\\s*"), ",")
         // Remplace ponctuation (.!?) suivie d'espaces ou retours chariots par ponctuation + 1 break
-        .replace(Regex("([.!?])\\s*"), "$1 <break time=\"500ms\"/> ")
+        .replace(Regex("(?<!\\.)([.!?])(?!\\d)\\s*"), "$1 <break time=\"500ms\"/> ")
         // Remplace les sauts de ligne restants (sans ponctuation) par 1 break
         .replace(Regex("(?<!<break time=\"500ms\"/> )\\n"), " <break time=\"500ms\"/> ")
 
     // 3. CRÉER LE SSML CORRECT AVEC EN-TÊTE XML
 
-    val baseText = textWithPauses
+
     val zws = "\u200B\u200B\u200B" // Ajoutez cette ligne ici
+    val baseText = "$zws$textWithPauses"
 
 
 
