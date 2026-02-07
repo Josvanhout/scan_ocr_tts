@@ -12,11 +12,11 @@ This Android project helps to read PDF files using Text-to-Speech (TTS). It perf
 * Configurable settings to adjust text search within pages.
 * Simple and user-friendly interface for easy use.
 
-<p style="display: inline-block; margin-right: 10px;">
-  <img src="./images/01.jpg" width="45%" />
+<p style="display: inline-block; margin-right: 5px;">
+  <img src="./images/01.jpg" width="35%" />
 </p>
 <p style="display: inline-block;">
-  <img src="./images/02.jpg" width="45%" />
+  <img src="./images/02.jpg" width="35%" />
 </p>
 
 
