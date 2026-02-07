@@ -14,10 +14,8 @@ This Android project helps to read PDF files using Text-to-Speech (TTS). It perf
 
 </p>
 
-<img src="./images/01.jpg" width="15%" style="margin-right: 20px;" />
-<img src="./images/02.jpg" width="15%" />
-
-
+| ![Image 1](./images/01.jpg) | ![Image 2](./images/02.jpg) |
+|----------------------------|----------------------------|
 
 [Manuel d'utilisation en français](./Doc/Manuel_d_utilisation.pdf)
 
