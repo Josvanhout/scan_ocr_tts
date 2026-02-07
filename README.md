@@ -5,6 +5,10 @@ This Android project helps to read PDF files using Text-to-Speech (TTS). It perf
 
 **This is a personal project that I am sharing here. I plan to gradually improve and optimize it.**
 
+[Manuel d'utilisation en français](./Doc/Manuel_d_utilisation.pdf)
+
+[User_Manual](./Doc/User_Manual.pdf)
+
 ## Features
 
 * Read PDF files in TTS (Text-to-Speech) mode.
@@ -17,9 +21,7 @@ This Android project helps to read PDF files using Text-to-Speech (TTS). It perf
 | ![Image 1](./images/01.jpg) | ![Image 2](./images/02.jpg) |
 |----------------------------|----------------------------|
 
-[Manuel d'utilisation en français](./Doc/Manuel_d_utilisation.pdf)
 
-[User_Manual](./Doc/User_Manual.pdf)
 
 ## Requirements
 
