@@ -1,6 +1,10 @@
 package com.example.scan_ocr_tts
 
 
+import org.opencv.android.Utils
+import org.opencv.core.Mat
+import org.opencv.imgproc.Imgproc
+
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
@@ -45,6 +49,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -85,6 +90,7 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.io.File
 import java.util.Locale
 
+
 data class Bookmark(
     val pdfPath: String,
     val pageIndex: Int,
@@ -122,11 +128,14 @@ fun OcrScreen(
     onNextPage: (() -> Unit)? = null,
     onGoToPage: ((Int) -> Unit)? = null,
     currentPageIndex: Int = 0,
-    totalPages: Int = 1
+    totalPages: Int = 1,
+    useHighRes: Boolean,  // ← NOUVEAU paramètre
+    onUseHighResChange: (Boolean) -> Unit  // ← NOUVEAU paramètre
+
 ) {
 
-
-
+    var scaleFactorEnabled by remember { mutableStateOf(false) }
+    var showOcrEmptyWarning by remember { mutableStateOf(false) }
 
     var recognizedText by remember { mutableStateOf("") }
 
@@ -158,6 +167,9 @@ fun OcrScreen(
     var minWidthRatio by rememberSaveable { mutableStateOf(0.15f) } // Valeur initiale = 15%
     val initialPreGrayAdjust = prefs.getFloat("preGrayAdjust", 0.0f)
     var preGrayAdjust by rememberSaveable { mutableStateOf(initialPreGrayAdjust) }
+    var preGrayTTSAdjust by rememberSaveable { mutableStateOf(initialPreGrayAdjust) }
+
+
     var ttsAlreadyFinished by remember { mutableStateOf(false) }
     var pageAdvanceTriggered by remember { mutableStateOf(false) }
 
@@ -206,6 +218,7 @@ fun OcrScreen(
                 bookmarkData["speechRate"]?.toFloatOrNull()?.let(onSpeechRateChange)
                 minWidthRatio = bookmarkData["minWidthRatio"]?.toFloatOrNull() ?: 0.15f
                 preGrayAdjust = bookmarkData["preGrayAdjust"]?.toFloatOrNull() ?: 0.0f
+                preGrayTTSAdjust = bookmarkData["preGrayTTSAdjust"]?.toFloatOrNull() ?: 0.0f
 
                 Log.d("BOOKMARK_DEBUG", "✓ RESTAURATION: Aller à page $savedPage")
                 onGoToPage?.invoke(savedPage)
@@ -255,7 +268,10 @@ fun OcrScreen(
         tts?.setSpeechRate(speechRate)
     }
 
-
+    LaunchedEffect(preGrayTTSAdjust) {
+        OCR_lu = false  // ← FORCER le re-OCR quand preGrayTTSAdjust change
+        Log.d("PRE_GRAY_TTS", "preGrayTTSAdjust changé, OCR_lu réinitialisé")
+    }
 
     DisposableEffect(Unit) {
 
@@ -463,20 +479,20 @@ fun OcrScreen(
 
 
 
-//                    IconButton(onClick = {
-//                        val file = File(
-//                            context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
-//                            "bookmarks.json"
-//                        )
-//                        val content = if (file.exists()) file.readText() else "Fichier vide"
-//                        Log.d("JSON_VIEWER", "Contenu JSON:\n$content")
-//                    }) {
-//                        Icon(
-//                            imageVector = Icons.Default.Screenshot,
-//                            contentDescription = "Log JSON",
-//                            tint = Color.White
-//                        )
-//                    }
+                    IconButton(onClick = {
+                        val file = File(
+                            context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
+                            "bookmarks.json"
+                        )
+                        val content = if (file.exists()) file.readText() else "Fichier vide"
+                        Log.d("JSON_VIEWER", "Contenu JSON:\n$content")
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Screenshot,
+                            contentDescription = "Log JSON",
+                            tint = Color.White
+                        )
+                    }
 
 
                     FlipScreenButton()
@@ -571,7 +587,8 @@ fun OcrScreen(
                                 contrastBoost = contrastBoost,
                                 speechRate = speechRate,
                                 minWidthRatio = minWidthRatio,
-                                preGrayAdjust = preGrayAdjust
+                                preGrayAdjust = preGrayAdjust,
+                                preGrayTTSAdjust = String.format(Locale.US, "%.2f", preGrayTTSAdjust).toFloat()
                             )
 
                             onNext()  // ← RETOUR À L'ACCUEIL
@@ -766,6 +783,25 @@ fun OcrScreen(
                 if (showControls) {
                     Column {
 
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = scaleFactorEnabled,
+                                onCheckedChange = { scaleFactorEnabled = it },
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = Color.Black,
+                                    uncheckedColor = Color.Black,
+                                    checkmarkColor = Color.White
+                                )
+                            )
+                            Text(
+                                "Haute résolution PDF (scaleFactor 1.5)",
+                                color = Color.Black,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
 // Pré-traitement gris
                         Text(
                             text = "Pré-traitement gris : ${"%.2f".format(preGrayAdjust)}",
@@ -808,8 +844,8 @@ fun OcrScreen(
                         Slider(
                             value = thresholdBias,
                             onValueChange = onThresholdChange,
-                            valueRange = 10f..60f,  // 👈 Changer la plage (pourcentage de blanc)
-                            steps = 12,
+                            valueRange = 0f..100f,  // 👈 Changer la plage (pourcentage de blanc)
+                            steps = 19,
                             modifier = Modifier
                                 .padding(horizontal = 16.dp)
                                 .height(24.dp)
@@ -843,6 +879,7 @@ fun OcrScreen(
 
 
 
+
 //Largeur min des colonnes
                         Text(
                             text = "Largeur colonnes min : ${(minWidthRatio * 100).toInt()}%",
@@ -863,6 +900,32 @@ fun OcrScreen(
                             },
                             valueRange = 0.05f..0.5f,
                             steps = 45,
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp)
+                                .height(24.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Pré-traitement gris pour le tts
+                        Text(
+                            text = "Pré-traitement gris pour le tts : ${"%.2f".format(preGrayTTSAdjust)}",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFFB71C1C))
+                                .padding(vertical = 2.dp, horizontal = 8.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Slider(
+                            value = preGrayTTSAdjust,
+                            onValueChange = { preGrayTTSAdjust = it },
+                            valueRange = -1.0f..2.0f,
+                            steps = 20,
                             modifier = Modifier
                                 .padding(horizontal = 16.dp)
                                 .height(24.dp)
@@ -972,7 +1035,9 @@ fun OcrScreen(
                                         onLocaleDetected = { locale -> detectedTtsLocale = locale },
                                         onPageAdvanceReset = { pageAdvanceTriggered = false },
                                         onTextProcessed = { text -> lastSpokenText = text },
-                                        onSetOcrLu = { OCR_lu = true }
+                                        onSetOcrLu = { OCR_lu = true },
+                                        preGrayTTSAdjust = preGrayTTSAdjust,
+                                        onOcrEmptyWarning = { showOcrEmptyWarning = it }
                                     )
                                 }
                             }
@@ -1036,7 +1101,9 @@ fun OcrScreen(
                                             onLocaleDetected = { locale -> detectedTtsLocale = locale },
                                             onPageAdvanceReset = { pageAdvanceTriggered = false },
                                             onTextProcessed = { text -> lastSpokenText = text },
-                                            onSetOcrLu = { OCR_lu = true }
+                                            onSetOcrLu = { OCR_lu = true },
+                                            preGrayTTSAdjust = preGrayTTSAdjust,
+                                            onOcrEmptyWarning = { showOcrEmptyWarning = it }
                                         )
                                     }
                                 }
@@ -1117,6 +1184,22 @@ fun OcrScreen(
 
         }
 
+    }
+
+    // À la fin de la fonction OcrScreen, avant le dernier }
+    if (showOcrEmptyWarning) {
+        AlertDialog(
+            onDismissRequest = { showOcrEmptyWarning = false },
+            title = { Text("OCR vide") },
+            text = {
+                Text("Le réglage ROUGE 'Pré-traitement gris pour le TTS' doit être ajusté.\n\nEssayez une valeur entre -1 et 2.\n Commencez par 0.")
+            },
+            confirmButton = {
+                Button(onClick = { showOcrEmptyWarning = false }) {
+                    Text("OK")
+                }
+            }
+        )
     }
 
 } // Fin de OcrScreen
@@ -1277,7 +1360,8 @@ fun saveBookmarkToJson(
     contrastBoost: Float,
     speechRate: Float,
     minWidthRatio: Float,
-    preGrayAdjust: Float
+    preGrayAdjust: Float,
+    preGrayTTSAdjust: Float
 ) {
     try {
         Log.d("BOOKMARK", "Sauvegarde JSON pour: $pdfPath page $pageIndex")
@@ -1311,7 +1395,8 @@ fun saveBookmarkToJson(
                     val speechRate = "\"speechRate\"\\s*:\\s*([\\d.]+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
                     val minWidthRatio = "\"minWidthRatio\"\\s*:\\s*([\\d.]+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
                     val preGrayAdjust = "\"preGrayAdjust\"\\s*:\\s*([\\d.-]+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
-
+                    val preGrayTTSAdjust = "\"preGrayTTSAdjust\"\\s*:\\s*([\\d.-]+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
+                    Log.d("BOOKMARK_DEBUG", "preGrayTTSAdjust extrait: $preGrayTTSAdjust")
                     if (pdfPath != null) {
                         bookmarksList.add(mapOf(
                             "pdfPath" to pdfPath,
@@ -1321,7 +1406,8 @@ fun saveBookmarkToJson(
                             "contrastBoost" to (contrastBoost?.toFloatOrNull() ?: 1f),
                             "speechRate" to (speechRate?.toFloatOrNull() ?: 1f),
                             "minWidthRatio" to (minWidthRatio?.toFloatOrNull() ?: 0.15f),
-                            "preGrayAdjust" to (preGrayAdjust?.toFloatOrNull() ?: 0.0f)
+                            "preGrayAdjust" to (preGrayAdjust?.toFloatOrNull() ?: 0.0f),
+                            "preGrayTTSAdjust" to (preGrayTTSAdjust?.toFloatOrNull() ?: 0.0f)
                         ))
                         Log.d("BOOKMARK", "Lu: $pdfPath")
                     }
@@ -1347,7 +1433,8 @@ fun saveBookmarkToJson(
             "contrastBoost" to contrastBoost,
             "speechRate" to speechRate,
             "minWidthRatio" to minWidthRatio,
-            "preGrayAdjust" to preGrayAdjust
+            "preGrayAdjust" to preGrayAdjust,
+            "preGrayTTSAdjust" to preGrayTTSAdjust
         )
 
         if (existingIndex >= 0) {
@@ -1372,7 +1459,8 @@ fun saveBookmarkToJson(
             bookmarksJson.append("      \"contrastBoost\": ${bookmark["contrastBoost"]},\n")
             bookmarksJson.append("      \"speechRate\": ${bookmark["speechRate"]},\n")
             bookmarksJson.append("      \"minWidthRatio\": ${bookmark["minWidthRatio"]},\n")
-            bookmarksJson.append("      \"preGrayAdjust\": ${bookmark["preGrayAdjust"]}\n")
+            bookmarksJson.append("      \"preGrayAdjust\": ${bookmark["preGrayAdjust"]},\n")
+            bookmarksJson.append("      \"preGrayTTSAdjust\": ${bookmark["preGrayTTSAdjust"]}\n")
             bookmarksJson.append("    }")
             if (index < bookmarksList.size - 1) bookmarksJson.append(",")
             bookmarksJson.append("\n")
@@ -1381,6 +1469,10 @@ fun saveBookmarkToJson(
         bookmarksJson.append("  ],\n")
         bookmarksJson.append("  \"dernierLivre\": \"$pdfPath\"\n")
         bookmarksJson.append("}")
+
+        Log.d("BOOKMARK_DEBUG", "=== CONTENU JSON À SAUVEGARDER ===")
+        Log.d("BOOKMARK_DEBUG", bookmarksJson.toString())  // ← Affiche le JSON complet
+        Log.d("BOOKMARK_DEBUG", "================================")
 
         // 5. Sauvegarder
         file.writeText(bookmarksJson.toString())
@@ -1430,8 +1522,10 @@ fun getBookmarkFromJson(context: Context, targetPdfPath: String? = null): Map<St
                 "\\s*\"rectPadding\"\\s*:\\s*([\\d.]+)\\s*," +
                 "\\s*\"contrastBoost\"\\s*:\\s*([\\d.]+)\\s*," +
                 "\\s*\"speechRate\"\\s*:\\s*([\\d.]+)\\s*," +
-                "\\s*\"minWidthRatio\"\\s*:\\s*([\\d.]+)\\s*," +  // <-- AJOUTER une virgule à la fin
-                "\\s*\"preGrayAdjust\"\\s*:\\s*([\\d.-]+)").toRegex()  // <-- AJOUTER CETTE LIGNE
+                "\\s*\"minWidthRatio\"\\s*:\\s*([\\d.]+)\\s*," +
+                "\\s*\"preGrayAdjust\"\\s*:\\s*([\\d.-]+)\\s*," +  // ← AJOUTER \\s*,
+                "\\s*\"preGrayTTSAdjust\"\\s*:\\s*([\\d.Ee+-]+)").toRegex()  // ← NOUVELLE LIGNE
+
 
         val bookmarkMatch = bookmarkRegex.find(jsonString)
 
@@ -1444,7 +1538,8 @@ fun getBookmarkFromJson(context: Context, targetPdfPath: String? = null): Map<St
                 "contrastBoost" to (bookmarkMatch.groupValues.getOrNull(4) ?: "1.0"),
                 "speechRate" to (bookmarkMatch.groupValues.getOrNull(5) ?: "1.0"),
                 "minWidthRatio" to (bookmarkMatch.groupValues.getOrNull(6) ?: "0.15"),
-                "preGrayAdjust" to (bookmarkMatch.groupValues.getOrNull(7) ?: "0.0")
+                "preGrayAdjust" to (bookmarkMatch.groupValues.getOrNull(7) ?: "0.0"),
+                "preGrayTTSAdjust" to (bookmarkMatch.groupValues.getOrNull(8) ?: "0.0")
             )
         } else {
             mapOf("pdfPath" to pdfPathToFind, "pageIndex" to "0")
@@ -1469,7 +1564,9 @@ fun handleTtsButtonClick(
     onLocaleDetected: (Locale) -> Unit,
     onPageAdvanceReset: () -> Unit,
     onTextProcessed: (String) -> Unit,
-    onSetOcrLu: () -> Unit
+    onSetOcrLu: () -> Unit,
+    preGrayTTSAdjust: Float,
+    onOcrEmptyWarning: ((Boolean) -> Unit)? = null
 ) {
     if (isSpeaking) {
         // Si en train de parler → arrêter
@@ -1496,6 +1593,18 @@ fun handleTtsButtonClick(
 
         if (originalDisplayBitmap == null || selectedRects.isEmpty()) return
 
+        Log.d("PRE_GRAY_TTS", "Valeur du slider preGrayTTSAdjust avant traitement: $preGrayTTSAdjust")
+        Log.d("PRE_GRAY_TTS", "originalDisplayBitmap dimensions: ${originalDisplayBitmap?.width}x${originalDisplayBitmap?.height}")
+
+        // 👇 ÉTAPE CRUCIALE : Appliquer le prétraitement gris à l'image COMPLÈTE
+        val preprocessedBitmap = if (preGrayTTSAdjust != 0.0f) {
+            applyPreGrayAdjustment(originalDisplayBitmap, preGrayTTSAdjust)
+        } else {
+            originalDisplayBitmap
+        }
+
+        Log.d("PRE_GRAY_TTS", "Bitmap prétraité avec preGrayTTSAdjust = $preGrayTTSAdjust")
+
         var pending = selectedRects.size
         val collectedText = StringBuilder()
 
@@ -1511,7 +1620,7 @@ fun handleTtsButtonClick(
             }
 
             val cropped = Bitmap.createBitmap(
-                originalDisplayBitmap!!,
+                preprocessedBitmap,
                 safeLeft,
                 safeTop,
                 safeWidth,
@@ -1546,6 +1655,10 @@ fun handleTtsButtonClick(
                                 speakLongText(tts, finalText)
                                 onSpeechStateChange(true)
                             }
+                        } else {  // ← NOUVEAU ELSE POUR TEXTE VIDE
+                            Log.d("PRE_GRAY_TTS", "OCR a retourné du texte vide")
+                            onOcrEmptyWarning?.invoke(true)
+                            onSpeechStateChange(false)
                         }
                     }
                 }
@@ -1749,5 +1862,80 @@ fun handleTtsCompletion(
                 onSelectedRectIndicesChange(emptySet())
             }
         }
+    }
+}
+
+// Ajoutez cette fonction dans le fichier ImageProcessing.kt
+fun applyPreGrayAdjustment(bitmap: Bitmap, preGrayAdjust: Float): Bitmap {
+    try {
+        Log.d("PRE_GRAY_TTS", "applyPreGrayAdjustment: preGrayAdjust = $preGrayAdjust")
+
+        // 1. Convertir le bitmap en Mat OpenCV
+        val srcMat = Mat()
+        Utils.bitmapToMat(bitmap, srcMat)
+
+        // 2. Convertir en niveaux de gris si nécessaire
+        val grayMat = Mat()
+        if (srcMat.channels() == 3) {
+            Imgproc.cvtColor(srcMat, grayMat, Imgproc.COLOR_RGB2GRAY)
+        } else if (srcMat.channels() == 4) {
+            Imgproc.cvtColor(srcMat, grayMat, Imgproc.COLOR_RGBA2GRAY)
+        } else {
+            srcMat.copyTo(grayMat)
+        }
+
+        // 3. Appliquer l'ajustement de luminosité/contraste
+        val adjustedMat = Mat()
+
+        // Si preGrayAdjust est positif : éclaircir
+        // Si preGrayAdjust est négatif : assombrir
+        // Facteur de contraste fixe à 1.0, on ajuste seulement la luminosité
+        val alpha = 1.0 // Facteur de contraste (inchangé)
+        val beta = preGrayAdjust * 255.0 // Ajustement de luminosité
+
+        grayMat.convertTo(adjustedMat, grayMat.type(), alpha, beta)
+
+        // 4. Reconvertir en bitmap
+        val resultBitmap = Bitmap.createBitmap(
+            bitmap.width,
+            bitmap.height,
+            Bitmap.Config.ARGB_8888
+        )
+
+        // Convertir le Mat gris en bitmap ARGB (3 canaux)
+        Imgproc.cvtColor(adjustedMat, adjustedMat, Imgproc.COLOR_GRAY2RGBA)
+        Utils.matToBitmap(adjustedMat, resultBitmap)
+
+        // 5. Libérer la mémoire
+        srcMat.release()
+        grayMat.release()
+        adjustedMat.release()
+
+
+        val pixelBefore = bitmap.getPixel(bitmap.width/2, bitmap.height/2)
+        val pixelAfter = resultBitmap.getPixel(resultBitmap.width/2, resultBitmap.height/2)
+
+        Log.d("PRE_GRAY_TTS", "Pixel avant traitement: ${pixelBefore.toUInt().toString(16)}")
+        Log.d("PRE_GRAY_TTS", "Pixel après traitement: ${pixelAfter.toUInt().toString(16)}")
+
+// Calculer la différence
+        val rBefore = android.graphics.Color.red(pixelBefore)
+        val gBefore = android.graphics.Color.green(pixelBefore)
+        val bBefore = android.graphics.Color.blue(pixelBefore)
+
+        val rAfter = android.graphics.Color.red(pixelAfter)
+        val gAfter = android.graphics.Color.green(pixelAfter)
+        val bAfter = android.graphics.Color.blue(pixelAfter)
+
+        Log.d("PRE_GRAY_TTS", "RGB avant: ($rBefore, $gBefore, $bBefore)")
+        Log.d("PRE_GRAY_TTS", "RGB après: ($rAfter, $gAfter, $bAfter)")
+
+
+        Log.d("PRE_GRAY_TTS", "applyPreGrayAdjustment: bitmap traité avec succès")
+        return resultBitmap
+
+    } catch (e: Exception) {
+        Log.e("PRE_GRAY_TTS", "Erreur dans applyPreGrayAdjustment", e)
+        return bitmap // Retourner l'original en cas d'erreur
     }
 }

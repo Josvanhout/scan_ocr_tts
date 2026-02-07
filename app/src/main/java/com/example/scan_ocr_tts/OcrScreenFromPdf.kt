@@ -2,6 +2,7 @@ package com.example.scan_ocr_tts
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Matrix
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.util.Log
@@ -20,7 +21,7 @@ fun OcrScreenFromPdf(
     val context = LocalContext.current
     val prefs = context.applicationContext.getSharedPreferences("ocr_settings", Context.MODE_PRIVATE)
 
-
+    var useHighRes by remember { mutableStateOf(false) }
     var imageFile by remember { mutableStateOf<File?>(null) }
     var currentPageIndex by remember { mutableStateOf(0) }
     var totalPages by remember { mutableStateOf(1) }
@@ -66,12 +67,18 @@ fun OcrScreenFromPdf(
             try {
                 Log.d("PAGE_TRACE", "RENDER start pageIndex=$currentPageIndex uri=$uri")
 
-                val (file, pageCount) = renderPdfPageToFile(context, uri, currentPageIndex)
+                // AJOUTE useHighRes comme 4ème paramètre
+                val (file, pageCount) = renderPdfPageToFile(
+                    context,
+                    uri,
+                    currentPageIndex,
+                    useHighRes  // ← AJOUTE ce paramètre
+                )
+
                 imageFile = file
-                Log.d("PAGE_TRACE", "RENDER done pageIndex=$currentPageIndex file=${file.absolutePath} exists=${file.exists()} size=${file.length()}")
+                Log.d("PAGE_TRACE", "RENDER done pageIndex=$currentPageIndex file=${file.absolutePath}")
 
                 totalPages = pageCount
-
                 Log.d("NAV_DEBUG", "Page rendue = $currentPageIndex / $totalPages")
             } catch (e: Exception) {
                 Log.e("NAV_DEBUG", "Erreur rendu page PDF", e)
@@ -137,42 +144,56 @@ fun OcrScreenFromPdf(
             },
 
             currentPageIndex = currentPageIndex,
-            totalPages = totalPages
+            totalPages = totalPages,
+            useHighRes = useHighRes,  // ← AJOUTE
+            onUseHighResChange = { useHighRes = it }  // ← AJOUTE
+
+
+
         )
     }
 }
 
-private fun renderPdfPageToFile(context: Context, uri: Uri, pageIndex: Int): Pair<File, Int>
-
- {
-
-
-     val fileDescriptor = context.contentResolver.openFileDescriptor(uri, "r")!!
+private fun renderPdfPageToFile(
+    context: Context,
+    uri: Uri,
+    pageIndex: Int,
+    useHighRes: Boolean  // ← NOUVEAU paramètre
+): Pair<File, Int> {
+    val fileDescriptor = context.contentResolver.openFileDescriptor(uri, "r")!!
     val renderer = PdfRenderer(fileDescriptor)
-     val pageCount = renderer.pageCount
+    val pageCount = renderer.pageCount
     val page = renderer.openPage(pageIndex)
 
+    // TEST SIMPLE : juste augmenter de 2x
+    val scaleFactor = if (useHighRes) 1.5f else 1.0f
+
     val bitmap = Bitmap.createBitmap(
-        page.width,
-        page.height,
+        (page.width * scaleFactor).toInt(),  // ← CHANGEMENT
+        (page.height * scaleFactor).toInt(), // ← CHANGEMENT
         Bitmap.Config.ARGB_8888
     )
 
-    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+    // IMPORTANT : ajouter une matrice pour l'échelle
+    val matrix = Matrix().apply {
+        postScale(scaleFactor, scaleFactor)
+    }
+
+    page.render(bitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY) // ← CHANGEMENT (ajout matrix)
+
     page.close()
     renderer.close()
     fileDescriptor.close()
 
-     val file = File(context.cacheDir, "pdf_page_$pageIndex.png")
-
+    val file = File(context.cacheDir, "pdf_page_$pageIndex.png")
     FileOutputStream(file).use {
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
     }
 
-     return Pair(file, pageCount)
+    // Nettoyer
+    bitmap.recycle() // ← IMPORTANT à ajouter aussi
 
-
-
- }
+    return Pair(file, pageCount)
+}
 
 
