@@ -174,12 +174,15 @@ private fun renderPdfPageToFile(
         Bitmap.Config.ARGB_8888
     )
 
+    val canvas = android.graphics.Canvas(bitmap)
+    canvas.drawColor(android.graphics.Color.WHITE)
+
     // IMPORTANT : ajouter une matrice pour l'échelle
     val matrix = Matrix().apply {
         postScale(scaleFactor, scaleFactor)
     }
 
-    page.render(bitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY) // ← CHANGEMENT (ajout matrix)
+    page.render(bitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_PRINT) // ← CHANGEMENT (ajout matrix)
 
     page.close()
     renderer.close()

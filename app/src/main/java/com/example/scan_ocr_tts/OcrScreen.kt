@@ -36,12 +36,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Accessibility
 import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.DensityMedium
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.Screenshot
+import androidx.compose.material.icons.filled.SettingsInputComponent
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tonality
 import androidx.compose.material.icons.filled.Tune
@@ -247,6 +250,7 @@ fun OcrScreen(
     var lastSpokenText by remember { mutableStateOf("") }
 
     var showControls by rememberSaveable { mutableStateOf(false) }
+    var showControls2 by rememberSaveable { mutableStateOf(false) }
     var showProcessed by rememberSaveable { mutableStateOf(false) }
 
     var autoPlayEnabled by remember { mutableStateOf(false) }
@@ -477,26 +481,27 @@ fun OcrScreen(
 //
 //                    Spacer(modifier = Modifier.weight(1f))
 
+// Sortie du fichier JSON dans logcat
 
+//                    IconButton(onClick = {
+//                        val file = File(
+//                            context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
+//                            "bookmarks.json"
+//                        )
+//                        val content = if (file.exists()) file.readText() else "Fichier vide"
+//                        Log.d("JSON_VIEWER", "Contenu JSON:\n$content")
+//                    }) {
+//                        Icon(
+//                            imageVector = Icons.Default.Screenshot,
+//                            contentDescription = "Log JSON",
+//                            tint = Color.White
+//                        )
+//                    }
 
-                    IconButton(onClick = {
-                        val file = File(
-                            context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
-                            "bookmarks.json"
-                        )
-                        val content = if (file.exists()) file.readText() else "Fichier vide"
-                        Log.d("JSON_VIEWER", "Contenu JSON:\n$content")
-                    }) {
-                        Icon(
-                            imageVector = Icons.Default.Screenshot,
-                            contentDescription = "Log JSON",
-                            tint = Color.White
-                        )
-                    }
-
-
+// Rotation de l'écran
                     FlipScreenButton()
 
+// Contraste auto
                     IconButton(onClick = { contrastBoostMode = !contrastBoostMode }) {
                         Icon(
                             imageVector = Icons.Default.Tonality,
@@ -505,6 +510,7 @@ fun OcrScreen(
                         )
                     }
 
+// Montre les curseurs
                     IconButton(onClick = { showControls = !showControls }) {
                         Icon(
                             imageVector = Icons.Default.Tune,
@@ -512,9 +518,14 @@ fun OcrScreen(
                             tint = if (showControls) Color.Red else Color.White
                         )
                     }
-
-
-
+                    // News sliders
+                    IconButton(onClick = { showControls2 = !showControls2 }) {
+                        Icon(
+                            imageVector = Icons.Default.DensityMedium,
+                            contentDescription = "Afficher les réglages",
+                            tint = if (showControls2) Color.Red else Color.White
+                        )
+                    }
 
 
 
@@ -531,37 +542,38 @@ fun OcrScreen(
                             )
                         }
 
-                        IconButton(onClick = { showTextScreen = true }) {
-                            Icon(
-                                imageVector = Icons.Default.School,
-                                contentDescription = "Afficher le texte OCR",
-                                tint = if (showProcessed) Color.Red else Color.White
-                            )
-                        }
-
-                        if (showTextScreen) {
-                            AlertDialog(
-                                onDismissRequest = { showTextScreen = false },
-                                title = { Text("Texte OCR") },
-                                text = {
-                                    Text(
-                                        if (lastSpokenText.isNotBlank()) lastSpokenText
-                                        else "Utilisez d'abord le bouton OCR"
-                                    )
-                                },
-                                confirmButton = {
-                                    Button(onClick = { showTextScreen = false }) {
-                                        Text("OK")
-                                    }
-                                }
-                            )
-                        }
-
-
-
+// Bouton pour voir le texte
+//                        IconButton(onClick = { showTextScreen = true }) {
+//                            Icon(
+//                                imageVector = Icons.Default.School,
+//                                contentDescription = "Afficher le texte OCR",
+//                                tint = if (showProcessed) Color.Red else Color.White
+//                            )
+//                        }
+//
+//                        if (showTextScreen) {
+//                            AlertDialog(
+//                                onDismissRequest = { showTextScreen = false },
+//                                title = { Text("Texte OCR") },
+//                                text = {
+//                                    Text(
+//                                        if (lastSpokenText.isNotBlank()) lastSpokenText
+//                                        else "Utilisez d'abord le bouton TTS"
+//                                    )
+//                                },
+//                                confirmButton = {
+//                                    Button(onClick = { showTextScreen = false }) {
+//                                        Text("OK")
+//                                    }
+//                                }
+//                            )
+//                        }
 
 
 
+
+
+// Sliders visibles
                         IconButton(onClick = {
                             val pdfKey = imageFile.parentFile?.name ?: "defaultPdf"
 
@@ -779,12 +791,13 @@ fun OcrScreen(
             ) {
 
 
-// SLIDERS
-                if (showControls) {
+// SLIDERS2
+                if (showControls2) {
                     Column {
-
+                        // Checkbox et label
                         Row(
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(bottom = 8.dp)
                         ) {
                             Checkbox(
                                 checked = scaleFactorEnabled,
@@ -796,15 +809,119 @@ fun OcrScreen(
                                 )
                             )
                             Text(
-                                "Haute résolution PDF (scaleFactor 1.5)",
+                                "High-resolution PDF (scaleFactor 1.5)",
                                 color = Color.Black,
                                 fontWeight = FontWeight.Bold
                             )
                         }
 
+                        // Pré-traitement gris pour le tts
+                        Text(
+                            text = "Gray preprocessing for TTS : ${"%.2f".format(preGrayTTSAdjust)}",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFFB71C1C))
+                                .padding(vertical = 2.dp, horizontal = 8.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Slider(
+                            value = preGrayTTSAdjust,
+                            onValueChange = { preGrayTTSAdjust = it },
+                            valueRange = -1.0f..2.0f,
+                            steps = 20,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .height(24.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Marge des cadres
+                        Text(
+                            text = "Frame margin : ${rectPadding.toInt()} px",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF2E7D32))
+                                .padding(vertical = 2.dp, horizontal = 8.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Slider(
+                            value = rectPadding,
+                            onValueChange = onRectPaddingChange,
+                            valueRange = 0f..18f,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .height(24.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Reading speed
+                        Text(
+                            text = "Reading speed : ${"%.2f".format(speechRate)}x",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF2E7D32))
+                                .padding(vertical = 2.dp, horizontal = 8.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Slider(
+                            value = speechRate,
+                            onValueChange = onSpeechRateChange,
+                            valueRange = 0.5f..1.5f,
+                            steps = 19,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .height(24.dp)
+                        )
+                    }
+                }
+
+
+// SLIDERS1
+                if (showControls) {
+                    Column {
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+//                            Checkbox(
+//                                checked = scaleFactorEnabled,
+//                                onCheckedChange = { scaleFactorEnabled = it },
+//                                colors = CheckboxDefaults.colors(
+//                                    checkedColor = Color.Black,
+//                                    uncheckedColor = Color.Black,
+//                                    checkmarkColor = Color.White
+//                                )
+//                            )
+//                            Text(
+//                                "High-resolution PDF (scaleFactor 1.5)",
+//                                color = Color.Black,
+//                                fontWeight = FontWeight.Bold
+//                            )
+                        }
+
 // Pré-traitement gris
                         Text(
-                            text = "Pré-traitement gris : ${"%.2f".format(preGrayAdjust)}",
+                            text = "Gray preprocessing : ${"%.2f".format(preGrayAdjust)}",
                             color = Color.White,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.ExtraBold,
@@ -831,7 +948,7 @@ fun OcrScreen(
 //Seuil blanc minimum
 
                          Text(
-                            text = "Seuil blanc min : ${thresholdBias.toInt()}",
+                            text = "Minimum white threshold: ${thresholdBias.toInt()}",
                             color = Color.White,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.ExtraBold,
@@ -855,7 +972,7 @@ fun OcrScreen(
 
 // Sensibilité au texte
                         Text(
-                            text = "Sensibilité texte : ${"%.2f".format(contrastBoost)}",
+                            text = "Text sensitivity: ${"%.2f".format(contrastBoost)}",
 
                             color = Color.White,
                             fontSize = 12.sp,
@@ -882,7 +999,7 @@ fun OcrScreen(
 
 //Largeur min des colonnes
                         Text(
-                            text = "Largeur colonnes min : ${(minWidthRatio * 100).toInt()}%",
+                            text = "Minimum column width: ${(minWidthRatio * 100).toInt()}%",
                             color = Color.White,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.ExtraBold,
@@ -907,80 +1024,80 @@ fun OcrScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // Pré-traitement gris pour le tts
-                        Text(
-                            text = "Pré-traitement gris pour le tts : ${"%.2f".format(preGrayTTSAdjust)}",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color(0xFFB71C1C))
-                                .padding(vertical = 2.dp, horizontal = 8.dp)
-                        )
+//                        // Pré-traitement gris pour le tts
+//                        Text(
+//                            text = "Gray preprocessing for TTS : ${"%.2f".format(preGrayTTSAdjust)}",
+//                            color = Color.White,
+//                            fontSize = 12.sp,
+//                            fontWeight = FontWeight.ExtraBold,
+//                            modifier = Modifier
+//                                .fillMaxWidth()
+//                                .background(Color(0xFFB71C1C))
+//                                .padding(vertical = 2.dp, horizontal = 8.dp)
+//                        )
+//
+//                        Spacer(modifier = Modifier.height(8.dp))
 
-                        Spacer(modifier = Modifier.height(8.dp))
+//                        Slider(
+//                            value = preGrayTTSAdjust,
+//                            onValueChange = { preGrayTTSAdjust = it },
+//                            valueRange = -1.0f..2.0f,
+//                            steps = 20,
+//                            modifier = Modifier
+//                                .padding(horizontal = 16.dp)
+//                                .height(24.dp)
+//                        )
+//
+//                        Spacer(modifier = Modifier.height(8.dp))
 
-                        Slider(
-                            value = preGrayTTSAdjust,
-                            onValueChange = { preGrayTTSAdjust = it },
-                            valueRange = -1.0f..2.0f,
-                            steps = 20,
-                            modifier = Modifier
-                                .padding(horizontal = 16.dp)
-                                .height(24.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-//Marge des cadres
-                        Text(
-                            text = "Marge cadre : ${rectPadding.toInt()} px",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color(0xFF2E7D32))
-                                .padding(vertical = 2.dp, horizontal = 8.dp)
-                        )
-
-                        Slider(
-                            value = rectPadding,
-                            onValueChange = onRectPaddingChange,
-                            valueRange = 0f..18f,
-                            modifier = Modifier
-                                .padding(horizontal = 16.dp)
-                                .height(24.dp)   // ← réduit la hauteur visuelle
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
+////Marge des cadres
+//                        Text(
+//                            text = "Frame margin : ${rectPadding.toInt()} px",
+//                            color = Color.White,
+//                            fontSize = 12.sp,
+//                            fontWeight = FontWeight.ExtraBold,
+//                            modifier = Modifier
+//                                .fillMaxWidth()
+//                                .background(Color(0xFF2E7D32))
+//                                .padding(vertical = 2.dp, horizontal = 8.dp)
+//                        )
+//
+//                        Slider(
+//                            value = rectPadding,
+//                            onValueChange = onRectPaddingChange,
+//                            valueRange = 0f..18f,
+//                            modifier = Modifier
+//                                .padding(horizontal = 16.dp)
+//                                .height(24.dp)   // ← réduit la hauteur visuelle
+//                        )
+//
+//                        Spacer(modifier = Modifier.height(8.dp))
 
 // Vitesse de lecture
 
 
-                        Text(
-                            text = "Vitesse de lecture : ${"%.2f".format(speechRate)}x",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color(0xFF2E7D32))
-                                .padding(vertical = 2.dp, horizontal = 8.dp)
-                        )
-
-                        Slider(
-                            value = speechRate,
-                            onValueChange = onSpeechRateChange,
-                            valueRange = 0.5f..1.5f,
-                            steps = 19,
-                            modifier = Modifier
-                                .padding(horizontal = 16.dp)
-                                .height(24.dp)   // ← réduit la hauteur visuelle
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
+//                        Text(
+//                            text = "Reading speed : ${"%.2f".format(speechRate)}x",
+//                            color = Color.White,
+//                            fontSize = 12.sp,
+//                            fontWeight = FontWeight.ExtraBold,
+//                            modifier = Modifier
+//                                .fillMaxWidth()
+//                                .background(Color(0xFF2E7D32))
+//                                .padding(vertical = 2.dp, horizontal = 8.dp)
+//                        )
+//
+//                        Slider(
+//                            value = speechRate,
+//                            onValueChange = onSpeechRateChange,
+//                            valueRange = 0.5f..1.5f,
+//                            steps = 19,
+//                            modifier = Modifier
+//                                .padding(horizontal = 16.dp)
+//                                .height(24.dp)   // ← réduit la hauteur visuelle
+//                        )
+//
+//                        Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
 
@@ -1058,10 +1175,16 @@ fun OcrScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     // Texte à gauche de la checkbox
                     Text(
-                        text = "Fragments",
+                        text = "sel. frames",
                         color = Color.White,
                         fontSize = 12.sp,
-                        modifier = Modifier.padding(end = 4.dp)
+                        modifier = Modifier
+                            .padding(end = 4.dp)
+                            .background(
+                                color = Color(0xFF0047AB), // Remplacez par MaterialTheme.colorScheme.primary pour une correspondance parfaite
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(50) // 50% pour un effet "pilule" comme vos boutons
+                            )
+                            .padding(horizontal = 12.dp, vertical = 6.dp) // Espacement interne pour le confort visuel
                     )
 
                     // La checkbox
@@ -1331,16 +1454,21 @@ fun detectLanguageAndSetTts(
         .addOnSuccessListener { languageCode ->
             val locale = when (languageCode) {
                 "fr" -> Locale.FRENCH
+                "en" -> Locale.ENGLISH
                 "es" -> Locale("es", "ES")
-                else -> Locale.FRENCH // langue par défaut
+                else -> Locale.getDefault()  // SIMPLE ET PROPRE
             }
 
+            Log.d("LANG_DETECT", "Langue détectée: $languageCode -> $locale")
             tts?.language = locale
             onDetected(locale)
         }
         .addOnFailureListener {
-            tts?.language = Locale.FRENCH
-            onDetected(Locale.FRENCH)
+            // En cas d'échec, utiliser la locale système
+            val defaultLocale = Locale.getDefault()
+            Log.e("LANG_DETECT", "Échec détection, utilisation locale système: $defaultLocale")
+            tts?.language = defaultLocale
+            onDetected(defaultLocale)
         }
 }
 
@@ -1718,7 +1846,7 @@ fun speakLongText(tts: TextToSpeech?, text: String) {
         .replace("'", "&apos;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
-        .replace("...", ",")
+        .replace("...", ". ")
         .replace("ndlr", "")
 
     // 2. Ajouter les pauses SSML

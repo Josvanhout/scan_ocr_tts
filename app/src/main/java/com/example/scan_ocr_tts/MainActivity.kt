@@ -108,10 +108,18 @@ class MainActivity : ComponentActivity() {
                             onScanClick = { currentScreen = "camera" },
                             onImportClick = { currentScreen = "import" },
                             onPdfSelected = { uri ->
-                                contentResolver.takePersistableUriPermission(
-                                    uri,
-                                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-                                )
+                                // On ne demande la permission persistante QUE si l'URI provient d'un fournisseur externe
+                                // Les URI de type "content://com.example..." (votre FileProvider) ne le supportent pas
+                                if (uri.authority != "${packageName}.provider") {
+                                    try {
+                                        contentResolver.takePersistableUriPermission(
+                                            uri,
+                                            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                        )
+                                    } catch (e: Exception) {
+                                        Log.e("NAV_DEBUG", "Persistance refusée (normal pour certains fichiers) : ${e.message}")
+                                    }
+                                }
 
                                 selectedPdfUri = uri
                                 currentScreen = "ocr_pdf"

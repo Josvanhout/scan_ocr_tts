@@ -57,3 +57,11 @@
 -keepclassmembers class **.R$* {
     public static <fields>;
 }
+
+# 9. SUPPRESSION DES LOGS (RELEASE)
+# Cette règle retire les appels Log.d, Log.v et Log.i lors de la compilation finale
+-assumenosideeffects class android.util.Log {
+    public static *** d(...);
+    public static *** v(...);
+    public static *** i(...);
+}

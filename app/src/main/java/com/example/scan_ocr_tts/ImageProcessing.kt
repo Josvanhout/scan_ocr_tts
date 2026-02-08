@@ -153,14 +153,23 @@ object ImageProcessing {
 
 // Détection des contours dans l'image seuillée
         val hierarchy = Mat()
+
+//        Imgproc.findContours(
+//            thresh,
+//            contours,
+//            hierarchy,
+//            Imgproc.RETR_EXTERNAL,
+//            Imgproc.CHAIN_APPROX_SIMPLE
+//        )
+
+
         Imgproc.findContours(
             thresh,
             contours,
             hierarchy,
-            Imgproc.RETR_EXTERNAL,
+            Imgproc.RETR_LIST, // Changez RETR_EXTERNAL par RETR_LIST
             Imgproc.CHAIN_APPROX_SIMPLE
         )
-
 
         val detectedRects = mutableListOf<Rect>()
         val filteredRects = mutableListOf<Rect>()
@@ -185,29 +194,31 @@ object ImageProcessing {
             detectedRects.add(rect)
         }
 // 🔴 Supprimer les rectangles inclus dans d'autres (petits cadres dans grands)
+// 🔴 Nouvelle logique : Supprimer les cadres qui contiennent d'autres blocs
+
+
         for (r in detectedRects) {
-            var insideAnother = false
+            var isContainer = false
 
             for (other in detectedRects) {
                 if (r == other) continue
 
-                if (
-                    r.x >= other.x &&
-                    r.y >= other.y &&
-                    r.x + r.width <= other.x + other.width &&
-                    r.y + r.height <= other.y + other.height
-                ) {
-                    insideAnother = true
+                // Si 'r' contient 'other' (et que 'other' est assez grand)
+                if (other.x > r.x &&
+                    other.y > r.y &&
+                    (other.x + other.width) < (r.x + r.width) &&
+                    (other.y + other.height) < (r.y + r.height)) {
+
+                    // Si le bloc interne représente une part importante de la zone,
+                    // alors 'r' est probablement un cadre décoratif.
+                    isContainer = true
                     break
                 }
             }
 
-            if (!insideAnother) {
+            if (!isContainer) {
                 filteredRects.add(r)
             }
-
-
-
         }
 
 
