@@ -15,7 +15,7 @@ import android.os.Environment
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import androidx.activity.ComponentActivity
-import androidx.camera.core.Logger.e
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -36,16 +36,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Accessibility
+
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.DensityMedium
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.School
+
 import androidx.compose.material.icons.filled.ScreenRotation
-import androidx.compose.material.icons.filled.Screenshot
-import androidx.compose.material.icons.filled.SettingsInputComponent
-import androidx.compose.material.icons.filled.Stop
+
 import androidx.compose.material.icons.filled.Tonality
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
@@ -124,7 +121,7 @@ fun OcrScreen(
     onContrastBoostChange: (Float) -> Unit,
 
     onNext: () -> Unit,
-    onLeavingScreen: () -> Unit,
+//    onLeavingScreen: () -> Unit,
 
 
     onPreviousPage: (() -> Unit)? = null,
@@ -137,7 +134,7 @@ fun OcrScreen(
 
 ) {
 
-    var scaleFactorEnabled by remember { mutableStateOf(false) }
+    // var scaleFactorEnabled by remember { mutableStateOf(false) }
     var showOcrEmptyWarning by remember { mutableStateOf(false) }
 
     var recognizedText by remember { mutableStateOf("") }
@@ -189,9 +186,9 @@ fun OcrScreen(
     var lastRestoredPdf by rememberSaveable { mutableStateOf<String?>(null) }
 
     // NOUVELLES VARIABLES
-    var lignes_tts by remember { mutableStateOf<List<String>>(emptyList()) }
-    var index_lise_tts by remember { mutableStateOf(0) }
-    var pause_tts by remember { mutableStateOf(false) }
+//    var lignes_tts by remember { mutableStateOf<List<String>>(emptyList()) }
+//    var index_lise_tts by remember { mutableStateOf(0) }
+//    var pause_tts by remember { mutableStateOf(false) }
 
 
     LaunchedEffect(pdfIdentity) {
@@ -268,6 +265,20 @@ fun OcrScreen(
         selectedRectIndices = emptySet()
     }
 
+    // Fonction locale pour inverser la selection les rectangles
+    val toggleRectanglesSelection = {
+        // Inverser la sélection : ceux qui étaient sélectionnés deviennent non-sélectionnés et vice-versa
+        selectedRectIndices = if (selectedRectIndices.size == rectangles.size) {
+            // Si tout est sélectionné, tout désélectionner
+            emptySet()
+        } else {
+            // Sinon, inverser la sélection
+            rectangles.indices.toSet() - selectedRectIndices
+        }
+        OCR_lu = false  // Forcer re-OCR après changement de sélection
+    }
+
+
     LaunchedEffect(speechRate) {
         tts?.setSpeechRate(speechRate)
     }
@@ -307,7 +318,29 @@ fun OcrScreen(
                                 } else {
                                     // Mode manuel : NE PAS avancer, mais décocher la case
                                     autoPlayEnabled = false
-                                    handleRectanglesDeselection()
+                                    // handleRectanglesDeselection()
+                                    toggleRectanglesSelection()
+
+                                    if (selectedRectIndices.isNotEmpty()) {
+                                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                            relaunchTts(
+                                                tts = tts,
+                                                selectedRectIndices = selectedRectIndices,
+                                                rectangles = rectangles,
+                                                originalDisplayBitmap = originalDisplayBitmap,
+                                                speechRate = speechRate,
+                                                detectedTtsLocale = detectedTtsLocale,
+                                                preGrayTTSAdjust = preGrayTTSAdjust,
+                                                onSpeechStateChange = { newState -> isSpeaking = newState },
+                                                onLocaleDetected = { locale -> detectedTtsLocale = locale },
+                                                onPageAdvanceReset = { pageAdvanceTriggered = false },
+                                                onTextProcessed = { text -> lastSpokenText = text },
+                                                onSetOcrLu = { OCR_lu = true },
+                                                onOcrEmptyWarning = { showOcrEmptyWarning = it },
+                                                context = context
+                                            )
+                                        }, 1000)
+                                    }
 
                                 }
                             }
@@ -800,8 +833,8 @@ fun OcrScreen(
                             modifier = Modifier.padding(bottom = 8.dp)
                         ) {
                             Checkbox(
-                                checked = scaleFactorEnabled,
-                                onCheckedChange = { scaleFactorEnabled = it },
+                                checked = useHighRes,
+                                onCheckedChange = onUseHighResChange,
                                 colors = CheckboxDefaults.colors(
                                     checkedColor = Color.Black,
                                     uncheckedColor = Color.Black,
@@ -947,7 +980,7 @@ fun OcrScreen(
 
 //Seuil blanc minimum
 
-                         Text(
+                        Text(
                             text = "Minimum white threshold: ${thresholdBias.toInt()}",
                             color = Color.White,
                             fontSize = 12.sp,
@@ -2066,4 +2099,48 @@ fun applyPreGrayAdjustment(bitmap: Bitmap, preGrayAdjust: Float): Bitmap {
         Log.e("PRE_GRAY_TTS", "Erreur dans applyPreGrayAdjustment", e)
         return bitmap // Retourner l'original en cas d'erreur
     }
+}
+
+fun relaunchTts(
+    tts: TextToSpeech?,
+    selectedRectIndices: Set<Int>,
+    rectangles: List<android.graphics.Rect>,
+    originalDisplayBitmap: Bitmap?,
+    speechRate: Float,
+    detectedTtsLocale: Locale?,
+    preGrayTTSAdjust: Float,
+    onSpeechStateChange: (Boolean) -> Unit,
+    onLocaleDetected: (Locale) -> Unit,
+    onPageAdvanceReset: () -> Unit,
+    onTextProcessed: (String) -> Unit,
+    onSetOcrLu: () -> Unit,
+    onOcrEmptyWarning: ((Boolean) -> Unit)? = null,
+    context: Context? = null
+) {
+    if (selectedRectIndices.isEmpty()) {
+        Log.d("RELAUNCH_TTS", "Aucun rectangle sélectionné, pas de relance")
+        return
+    }
+
+    // Forcer un nouvel OCR
+    onSetOcrLu.invoke()
+
+    Log.d("RELAUNCH_TTS", "Relance TTS (${selectedRectIndices.size} rectangles)")
+
+    handleTtsButtonClick(
+        isSpeaking = false,
+        tts = tts,
+        selectedRectIndices = selectedRectIndices,
+        rectangles = rectangles,
+        originalDisplayBitmap = originalDisplayBitmap,
+        speechRate = speechRate,
+        detectedTtsLocale = detectedTtsLocale,
+        onSpeechStateChange = onSpeechStateChange,
+        onLocaleDetected = onLocaleDetected,
+        onPageAdvanceReset = onPageAdvanceReset,
+        onTextProcessed = onTextProcessed,
+        onSetOcrLu = onSetOcrLu,
+        preGrayTTSAdjust = preGrayTTSAdjust,
+        onOcrEmptyWarning = onOcrEmptyWarning
+    )
 }

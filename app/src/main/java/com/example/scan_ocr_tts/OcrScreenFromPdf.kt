@@ -37,6 +37,7 @@ fun OcrScreenFromPdf(
                 .putFloat("thresholdBias", thresholdBias)
                 .putFloat("rectPadding", rectPadding)
                 .putFloat("contrastBoost", contrastBoost)
+                .putFloat("speechRate", speechRate)
                 .commit()
 
             Log.d("PREFS_DEBUG", "SAVED ON DISPOSE")
@@ -117,17 +118,17 @@ fun OcrScreenFromPdf(
                 prefs.edit().putFloat("speechRate", it).apply()
             },
 
-            onLeavingScreen = {
-                prefs.edit()
-                    .putFloat("thresholdBias", thresholdBias)
-                    .putFloat("rectPadding", rectPadding)
-                    .putFloat("contrastBoost", contrastBoost)
-                    .putFloat("speechRate", speechRate)
-
-                    .commit()
-
-                Log.d("PREFS_DEBUG", "SAVED ON LEAVE OCR SCREEN")
-            },
+//            onLeavingScreen = {
+//                prefs.edit()
+//                    .putFloat("thresholdBias", thresholdBias)
+//                    .putFloat("rectPadding", rectPadding)
+//                    .putFloat("contrastBoost", contrastBoost)
+//                    .putFloat("speechRate", speechRate)
+//
+//                    .commit()
+//
+//                Log.d("PREFS_DEBUG", "SAVED ON LEAVE OCR SCREEN")
+//            },
 
             onPreviousPage = {
                 Log.d("PAGE_TRACE", "CLICK < : currentPageIndex(before)=$currentPageIndex")

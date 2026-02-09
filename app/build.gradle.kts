@@ -1,3 +1,5 @@
+
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -17,8 +19,8 @@ android {
         applicationId = "com.example.scan_ocr_tts"
         minSdk = 30
         targetSdk = 34  // ↓ Réduit aussi
-        versionCode = 7
-        versionName = "1.7"
+        versionCode = 9
+        versionName = "1.9"
         resourceConfigurations += setOf("fr", "en", "es", "xxhdpi")
 
         // 🎯 OPTIMISATION RESSOURCES
@@ -135,6 +137,11 @@ dependencies {
     // androidTestImplementation(libs.androidx.ui.test.junit4)
     androidTestImplementation ("androidx.compose.ui:ui-test-junit4:1.1.0")
 
-    debugImplementation(libs.androidx.ui.tooling)
-    debugImplementation(libs.androidx.ui.test.manifest)
+
+    // TESSERACT
+    //implementation("com.rmtheis:tess-two:9.1.0")
+
+    // TESSERACT
+
+
 }

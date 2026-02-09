@@ -28,6 +28,7 @@ import android.net.Uri
 
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.layout.padding
 
 import java.io.File
 import java.io.FileOutputStream
@@ -41,6 +42,14 @@ fun MainScreen(
 )
  {
     val context = LocalContext.current
+
+     // Récupérer la versionName depuis le package
+     val packageInfo = try {
+         context.packageManager.getPackageInfo(context.packageName, 0)
+     } catch (e: Exception) {
+         null
+     }
+     val versionName = packageInfo?.versionName ?: "N/A"
 
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -77,6 +86,12 @@ fun MainScreen(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
 
+         Text(
+             text = "Version: $versionName  Beta",
+             modifier = Modifier.padding(bottom = 32.dp), // 👈 Ajouter du padding en bas
+             style = androidx.compose.material3.MaterialTheme.typography.titleMedium, // 👈 Texte plus grand
+             color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
+         )
 
          Button(
              onClick = {
