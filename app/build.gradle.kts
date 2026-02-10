@@ -139,7 +139,7 @@ dependencies {
 
 
     // TESSERACT
-    //implementation("com.rmtheis:tess-two:9.1.0")
+    implementation("com.rmtheis:tess-two:9.1.0")
 
     // TESSERACT
 
