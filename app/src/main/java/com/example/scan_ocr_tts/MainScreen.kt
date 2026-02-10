@@ -27,8 +27,10 @@ import androidx.core.content.ContextCompat
 import android.net.Uri
 
 import android.content.Context
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.LaunchedEffect
 
 import java.io.File
 import java.io.FileOutputStream
@@ -50,6 +52,8 @@ fun MainScreen(
          null
      }
      val versionName = packageInfo?.versionName ?: "N/A"
+
+
 
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -87,7 +91,7 @@ fun MainScreen(
     ) {
 
          Text(
-             text = "Version: $versionName  Beta",
+             text = "Version: $versionName",
              modifier = Modifier.padding(bottom = 32.dp), // 👈 Ajouter du padding en bas
              style = androidx.compose.material3.MaterialTheme.typography.titleMedium, // 👈 Texte plus grand
              color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface

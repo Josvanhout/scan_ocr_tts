@@ -19,8 +19,8 @@ android {
         applicationId = "com.example.scan_ocr_tts"
         minSdk = 30
         targetSdk = 34  // ↓ Réduit aussi
-        versionCode = 9
-        versionName = "1.9"
+        versionCode = 21
+        versionName = "2.0.1-beta"
         resourceConfigurations += setOf("fr", "en", "es", "xxhdpi")
 
         // 🎯 OPTIMISATION RESSOURCES
@@ -102,7 +102,7 @@ dependencies {
     // 🎯 ML KIT OPTIMISÉ (UNE SEULE FOIS !)
     // REMPLACE par la version Play Services (plus légère)
     implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.0")
-    // implementation("com.google.mlkit:text-recognition:16.0.0")  // ⛔ SUPPRIME
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition-common:19.0.0")
 
     implementation ("com.google.mlkit:language-id:17.0.4")
     implementation ("androidx.compose.material:material-icons-extended")

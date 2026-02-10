@@ -1,5 +1,6 @@
 package com.example.scan_ocr_tts
 
+import com.example.scan_ocr_tts.*
 
 import org.opencv.android.Utils
 import org.opencv.core.Mat
@@ -36,14 +37,19 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddComment
+import androidx.compose.material.icons.filled.AmpStories
+import androidx.compose.material.icons.filled.Analytics
 
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.DensityMedium
 import androidx.compose.material.icons.filled.Home
 
 import androidx.compose.material.icons.filled.ScreenRotation
+import androidx.compose.material.icons.filled.Screenshot
 
 import androidx.compose.material.icons.filled.Tonality
+import androidx.compose.material.icons.filled.Transcribe
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -141,6 +147,36 @@ fun OcrScreen(
 
     val context = LocalContext.current
 
+
+    // Vérification OCR au chargement de l'écran
+    LaunchedEffect(Unit) {
+        Log.d("OCR_CHECK", "Vérification OCR dans OcrScreen...")
+
+        try {
+            val dummyBitmap = android.graphics.Bitmap.createBitmap(
+                100, 100, android.graphics.Bitmap.Config.ARGB_8888
+            )
+            dummyBitmap.eraseColor(android.graphics.Color.WHITE)
+
+            val dummyImage = com.google.mlkit.vision.common.InputImage.fromBitmap(dummyBitmap, 0)
+            val recognizer = com.google.mlkit.vision.text.TextRecognition.getClient(
+                com.google.mlkit.vision.text.latin.TextRecognizerOptions.DEFAULT_OPTIONS
+            )
+
+            recognizer.process(dummyImage)
+                .addOnSuccessListener {
+                    Log.d("OCR_CHECK", "✓ OCR prêt dans OcrScreen")
+                }
+                .addOnFailureListener { e ->
+                    Log.w("OCR_CHECK", "⚠ OCR pas prêt: ${e.message}")
+                }
+        } catch (e: Exception) {
+            Log.e("OCR_CHECK", "❌ Erreur OCR: ${e.message}")
+        }
+    }
+
+
+
     // 👇 AJOUTER CES LIGNES ICI
     // Extraire le nom du fichier PDF à partir du chemin
     val pdfFileName by remember(pdfIdentity) {
@@ -219,7 +255,11 @@ fun OcrScreen(
                 minWidthRatio = bookmarkData["minWidthRatio"]?.toFloatOrNull() ?: 0.15f
                 preGrayAdjust = bookmarkData["preGrayAdjust"]?.toFloatOrNull() ?: 0.0f
                 preGrayTTSAdjust = bookmarkData["preGrayTTSAdjust"]?.toFloatOrNull() ?: 0.0f
-
+                bookmarkData["useHighRes"]?.toBooleanStrictOrNull()?.let { savedUseHighRes ->
+                    if (savedUseHighRes != useHighRes) {
+                        onUseHighResChange(savedUseHighRes)
+                    }
+                }
                 Log.d("BOOKMARK_DEBUG", "✓ RESTAURATION: Aller à page $savedPage")
                 onGoToPage?.invoke(savedPage)
             } else {
@@ -293,9 +333,32 @@ fun OcrScreen(
 
         tts = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale.FRANCE
-                tts?.setSpeechRate(speechRate)
 
+                // ↓↓↓ AJOUTEZ ICI (après le if et avant tts?.language) ↓↓↓
+                val availableLangs = tts?.availableLanguages ?: emptySet()
+// Par défaut, utiliser fr_FR s'il existe
+                val defaultLocale = if (availableLangs.contains(Locale.FRANCE)) {
+                    Locale.FRANCE
+                } else if (availableLangs.contains(Locale("es", "ES"))) {
+                    Locale("es", "ES")
+                } else if (availableLangs.contains(Locale.US)) {
+                    Locale.US
+                } else {
+                    Locale.getDefault()
+                }
+
+                tts?.language = defaultLocale
+                Log.d("TTS_CHECK", "Locale TTS par défaut: $defaultLocale")
+
+                tts?.setSpeechRate(speechRate)
+                // Vérifier les capacités TTS
+                val engineInfo = tts?.defaultEngine
+                Log.d("TTS_CHECK", "Moteur TTS par défaut: $engineInfo")
+
+                val engines = tts?.engines
+                engines?.forEach { engine ->
+                    Log.d("TTS_CHECK", "Moteur disponible: ${engine.name} - ${engine.label}")
+                }
 
                 tts?.setOnUtteranceProgressListener(object :
                     android.speech.tts.UtteranceProgressListener() {
@@ -364,9 +427,7 @@ fun OcrScreen(
 
 
     var textBlocks by remember {
-        mutableStateOf<List<com.google.mlkit.vision.text.Text.TextBlock>>(
-            emptyList()
-        )
+        mutableStateOf<List<TextBlock>>(emptyList())
     }
 
 
@@ -434,21 +495,29 @@ fun OcrScreen(
         displayBitmap = boostedBitmap
 
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+//        val options = TextRecognizerOptions.Builder()
+//            .setEntityMode(TextRecognizerOptions.ENTITY_MODE_NONE)
+//            .build()
+//        val recognizer = TextRecognition.getClient(options)
+
+
         val image = InputImage.fromBitmap(processedBitmap, 0)
 
-        recognizer.process(image)
-            .addOnSuccessListener { visionText ->
-                Log.d("NAV_DEBUG", "OCR blocs détectés: ${visionText.textBlocks.size}")
-                textBlocks = visionText.textBlocks
+        OcrProcessor.processImageWithMlKit(processedBitmap, 0) { ocrResult ->
+            if (ocrResult.success) {
+                Log.d("NAV_DEBUG", "OCR blocs détectés: ${ocrResult.blocks.size}")
+                // Maintenant nous utilisons directement nos TextBlock
+                textBlocks = ocrResult.blocks
                 recognizedText = "Sélectionne les zones à garder, puis appuie sur le bouton."
 
                 // ← CORRECTION ICI : utiliser handleTtsButtonClick pour autoPlay
+                // (gardez votre code existant ici si nécessaire)
 
-            }
-            .addOnFailureListener { e ->
-                Log.e("OCR_DEBUG", "Erreur OCR", e)
+            } else {
+                Log.e("OCR_DEBUG", "Erreur OCR: ${ocrResult.error}")
                 recognizedText = "Erreur lors de la reconnaissance."
             }
+        }
 
 
     }
@@ -516,23 +585,51 @@ fun OcrScreen(
 
 // Sortie du fichier JSON dans logcat
 
-//                    IconButton(onClick = {
-//                        val file = File(
-//                            context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
-//                            "bookmarks.json"
-//                        )
-//                        val content = if (file.exists()) file.readText() else "Fichier vide"
-//                        Log.d("JSON_VIEWER", "Contenu JSON:\n$content")
-//                    }) {
-//                        Icon(
-//                            imageVector = Icons.Default.Screenshot,
-//                            contentDescription = "Log JSON",
-//                            tint = Color.White
-//                        )
-//                    }
+                    IconButton(onClick = {
+                        val file = File(
+                            context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
+                            "bookmarks.json"
+                        )
+                        val content = if (file.exists()) file.readText() else "Fichier vide"
+                        Log.d("JSON_VIEWER", "Contenu JSON:\n$content")
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Screenshot,
+                            contentDescription = "Log JSON",
+                            tint = Color.White
+                        )
+                    }
 
 // Rotation de l'écran
                     FlipScreenButton()
+
+
+//                    Button(onClick = {
+//                        Log.d("TTS_TEST", "Test TTS avec SSML simple")
+//
+//                        // Test SSML très simple
+//                        val ssmlText = """
+//        <?xml version="1.0" encoding="UTF-8"?>
+//        <speak>
+//            Bonjour, ceci est un test avec SSML très simple.
+//        </speak>
+//    """.trimIndent()
+//
+//                        tts?.language = Locale.FRANCE
+//                        tts?.setSpeechRate(speechRate)
+//
+//                        val result = tts?.speak(ssmlText, TextToSpeech.QUEUE_FLUSH, null, "test_ssml")
+//                        Log.d("TTS_TEST", "Résultat SSML simple: $result")
+//
+//                        // Test 2 : Sans SSML pour comparer
+//                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+//                            val simpleText = "Bonjour, ceci est un test sans SSML."
+//                            val result2 = tts?.speak(simpleText, TextToSpeech.QUEUE_ADD, null, "test_no_ssml")
+//                            Log.d("TTS_TEST", "Résultat sans SSML: $result2")
+//                        }, 1000)
+//                    }) {
+//                        Text("Test SSML")
+//                    }
 
 // Contraste auto
                     IconButton(onClick = { contrastBoostMode = !contrastBoostMode }) {
@@ -578,7 +675,7 @@ fun OcrScreen(
 // Bouton pour voir le texte
 //                        IconButton(onClick = { showTextScreen = true }) {
 //                            Icon(
-//                                imageVector = Icons.Default.School,
+//                                imageVector = Icons.Default.Analytics,
 //                                contentDescription = "Afficher le texte OCR",
 //                                tint = if (showProcessed) Color.Red else Color.White
 //                            )
@@ -633,7 +730,8 @@ fun OcrScreen(
                                 speechRate = speechRate,
                                 minWidthRatio = minWidthRatio,
                                 preGrayAdjust = preGrayAdjust,
-                                preGrayTTSAdjust = String.format(Locale.US, "%.2f", preGrayTTSAdjust).toFloat()
+                                preGrayTTSAdjust = String.format(Locale.US, "%.2f", preGrayTTSAdjust).toFloat(),
+                                useHighRes = useHighRes
                             )
 
                             onNext()  // ← RETOUR À L'ACCUEIL
@@ -644,7 +742,7 @@ fun OcrScreen(
                             )
                         }
 
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
 
 
                     }
@@ -1168,7 +1266,7 @@ fun OcrScreen(
                                     pageAdvanceTriggered = false
                                     tts?.language = detectedTtsLocale ?: Locale.FRENCH
                                     tts?.setSpeechRate(speechRate)
-                                    speakLongText(tts, lastSpokenText)
+                                    speakLongText(tts, lastSpokenText, context)
                                     isSpeaking = true
                                 } else {
                                     // Premier OCR pour cette page
@@ -1240,7 +1338,7 @@ fun OcrScreen(
                                         pageAdvanceTriggered = false
                                         tts?.language = detectedTtsLocale ?: Locale.FRENCH
                                         tts?.setSpeechRate(speechRate)
-                                        speakLongText(tts, lastSpokenText)
+                                        speakLongText(tts, lastSpokenText, context)
                                         isSpeaking = true
                                     } else {
                                         // Premier OCR pour cette page
@@ -1362,785 +1460,3 @@ fun OcrScreen(
 
 
 
-
-
-fun loadCorrectlyOrientedBitmap(path: String): Bitmap {
-    val bitmap = BitmapFactory.decodeFile(path)
-
-    val exif = ExifInterface(path)
-    val orientation = exif.getAttributeInt(
-        ExifInterface.TAG_ORIENTATION,
-        ExifInterface.ORIENTATION_NORMAL
-    )
-
-    val matrix = Matrix()
-    when (orientation) {
-        ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
-        ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
-        ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
-    }
-
-    return Bitmap.createBitmap(
-        bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true
-    )
-
-}
-
-fun cleanOcrTextForTts(raw: String): String {
-    return raw
-        // Ligatures typographiques souvent mal lues
-        .replace("ﬁ", "fi")
-        .replace("ﬂ", "fl")
-
-        // Mots coupés en fin de ligne (ex: "exem-\nple")
-        .replace(Regex("(?<=\\p{L})-\\s*\\n\\s*(?=\\p{L})"), "")
-
-        // 1️⃣ REPÉRAGE DES MOTS EN MAJUSCULES QUI SE SUIVENT
-        .replace(Regex("\\b([A-ZÉÈÀÂÔÎÏÊÇŒ]{2,})(\\s+[A-ZÉÈÀÂÔÎÏÊÇŒ]{2,})+\\b")) { match ->
-            val text = match.value
-            // Ajouter un point à la fin si pas déjà de ponctuation
-            if (text.last().isLetterOrDigit()) "$text." else text
-        }
-
-
-        // Sauts de ligne au milieu des phrases → espace
-        .replace(Regex("(?<![.!?])\\n"), " ")
-
-        // Espaces multiples
-        .replace(Regex("\\s+"), " ")
-
-        // Espaces avant ponctuation supprimés
-        .replace(Regex("\\s+([,.!?;:])"), "$1")
-
-        // Espace propre après ponctuation
-        .replace(Regex("([,.!?;:])(\\p{L})"), "$1 $2")
-
-        // Guillemets français mal espacés
-        .replace(Regex("«\\s+"), "« ")
-        .replace(Regex("\\s+»"), " »")
-
-        // Apostrophes OCR foireuses
-        .replace("’", "'")
-        .replace("`", "'")
-
-        // Cas très courant : "l es", "d es", "qu i"
-        .replace(Regex("\\b([ldjmstcq])\\s+(?=[aeiouh])"), "$1'")
-
-        // Conversion des siècles en chiffres arabes pour le TTS
-        // Conversion des siècles (XIXe / XIXᵉ / XIX° / XIXº) -> 19e pour le TTS
-        // Conversion robuste des siècles avant "siècle"
-        // Détection très tolérante d’un bloc avant "siècle"
-        .replace(Regex("\\b([A-Za-z*]{2,8})\\s*(?:e|ᵉ|°|º)?\\s+siècle\\b", RegexOption.IGNORE_CASE)) { m ->
-            val raw = m.groupValues[1]
-
-            Log.d("NAV_DEBUG", "siècle brut détecté = $raw")
-
-            val roman = raw
-                .replace('1', 'I')
-                .replace('l', 'I')
-                .replace('v', 'V')
-                .replace('u', 'V')
-                .replace('r', 'I')
-                .replace("*", "")
-                .uppercase()
-
-            val n = romanToInt(roman)
-
-            Log.d("NAV_DEBUG", "siècle normalisé = $roman → $n")
-
-            if (n in 1..50) "${n}e siècle" else m.value
-        }
-
-        .also { Log.d("NAV_DEBUG", "APRES SIECLES = $it") }
-
-        // 2️⃣ CONVERSION EN MINUSCULES (avant le trim final)
-        .lowercase(Locale.getDefault())
-
-        // Nettoyage final
-        .trim()
-}
-
-fun romanToInt(roman: String): Int {
-    val map = mapOf(
-        'I' to 1, 'V' to 5, 'X' to 10,
-        'L' to 50, 'C' to 100, 'D' to 500, 'M' to 1000
-    )
-
-    var total = 0
-    var prev = 0
-
-    for (c in roman.reversed()) {
-        val value = map[c] ?: return 0
-        if (value < prev) total -= value else total += value
-        prev = value
-    }
-    return total
-}
-fun detectLanguageAndSetTts(
-    text: String,
-    tts: TextToSpeech?,
-    onDetected: (Locale) -> Unit
-) {
-    val identifier = com.google.mlkit.nl.languageid.LanguageIdentification.getClient()
-
-    identifier.identifyLanguage(text)
-        .addOnSuccessListener { languageCode ->
-            val locale = when (languageCode) {
-                "fr" -> Locale.FRENCH
-                "en" -> Locale.ENGLISH
-                "es" -> Locale("es", "ES")
-                else -> Locale.getDefault()  // SIMPLE ET PROPRE
-            }
-
-            Log.d("LANG_DETECT", "Langue détectée: $languageCode -> $locale")
-            tts?.language = locale
-            onDetected(locale)
-        }
-        .addOnFailureListener {
-            // En cas d'échec, utiliser la locale système
-            val defaultLocale = Locale.getDefault()
-            Log.e("LANG_DETECT", "Échec détection, utilisation locale système: $defaultLocale")
-            tts?.language = defaultLocale
-            onDetected(defaultLocale)
-        }
-}
-
-
-
-
-
-// Ajoutez ceci AVANT saveBookmarkToJson
-
-
-fun saveBookmarkToJson(
-    context: Context,
-    pdfPath: String,
-    pageIndex: Int,
-    thresholdBias: Float,
-    rectPadding: Float,
-    contrastBoost: Float,
-    speechRate: Float,
-    minWidthRatio: Float,
-    preGrayAdjust: Float,
-    preGrayTTSAdjust: Float
-) {
-    try {
-        Log.d("BOOKMARK", "Sauvegarde JSON pour: $pdfPath page $pageIndex")
-
-        val fileName = "bookmarks.json"
-        val file = File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), fileName)
-        file.parentFile?.mkdirs()
-
-        // 1. Lire les signets existants
-        // 1. Lire les signets existants
-        val bookmarksList = mutableListOf<Map<String, Any>>()
-
-        if (file.exists() && file.length() > 0) {
-            try {
-                val jsonString = file.readText()
-                Log.d("BOOKMARK", "JSON existant: $jsonString")
-
-                // Utiliser une approche simple mais fonctionnelle
-                // Chercher tous les objets bookmark
-                val bookmarkRegex = "\\{[^{}]*\"pdfPath\"[^{}]*\\}".toRegex()
-                val matches = bookmarkRegex.findAll(jsonString)
-
-                matches.forEach { match ->
-                    val bookmarkStr = match.value
-                    // Extraire toutes les propriétés
-                    val pdfPath = "\"pdfPath\"\\s*:\\s*\"([^\"]+)\"".toRegex().find(bookmarkStr)?.groupValues?.get(1)
-                    val pageIndex = "\"pageIndex\"\\s*:\\s*(\\d+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
-                    val thresholdBias = "\"thresholdBias\"\\s*:\\s*([\\d.]+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
-                    val rectPadding = "\"rectPadding\"\\s*:\\s*([\\d.]+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
-                    val contrastBoost = "\"contrastBoost\"\\s*:\\s*([\\d.]+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
-                    val speechRate = "\"speechRate\"\\s*:\\s*([\\d.]+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
-                    val minWidthRatio = "\"minWidthRatio\"\\s*:\\s*([\\d.]+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
-                    val preGrayAdjust = "\"preGrayAdjust\"\\s*:\\s*([\\d.-]+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
-                    val preGrayTTSAdjust = "\"preGrayTTSAdjust\"\\s*:\\s*([\\d.-]+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
-                    Log.d("BOOKMARK_DEBUG", "preGrayTTSAdjust extrait: $preGrayTTSAdjust")
-                    if (pdfPath != null) {
-                        bookmarksList.add(mapOf(
-                            "pdfPath" to pdfPath,
-                            "pageIndex" to (pageIndex?.toIntOrNull() ?: 0),
-                            "thresholdBias" to (thresholdBias?.toFloatOrNull() ?: 40f),
-                            "rectPadding" to (rectPadding?.toFloatOrNull() ?: 0f),
-                            "contrastBoost" to (contrastBoost?.toFloatOrNull() ?: 1f),
-                            "speechRate" to (speechRate?.toFloatOrNull() ?: 1f),
-                            "minWidthRatio" to (minWidthRatio?.toFloatOrNull() ?: 0.15f),
-                            "preGrayAdjust" to (preGrayAdjust?.toFloatOrNull() ?: 0.0f),
-                            "preGrayTTSAdjust" to (preGrayTTSAdjust?.toFloatOrNull() ?: 0.0f)
-                        ))
-                        Log.d("BOOKMARK", "Lu: $pdfPath")
-                    }
-                }
-
-                Log.d("BOOKMARK", "Trouvé ${bookmarksList.size} signets existants")
-            } catch (e: Exception) {
-                Log.e("BOOKMARK", "Erreur lecture JSON", e)
-            }
-        }
-
-        // 2. Retirer l'ancienne entrée si elle existe
-        bookmarksList.removeAll { it["pdfPath"] == pdfPath }
-
-        // 3. Ajouter le nouveau signet
-        // 3. Mettre à jour OU ajouter le nouveau signet
-        val existingIndex = bookmarksList.indexOfFirst { it["pdfPath"] == pdfPath }
-        val newBookmark = mapOf(
-            "pdfPath" to pdfPath,
-            "pageIndex" to pageIndex,
-            "thresholdBias" to thresholdBias,
-            "rectPadding" to rectPadding,
-            "contrastBoost" to contrastBoost,
-            "speechRate" to speechRate,
-            "minWidthRatio" to minWidthRatio,
-            "preGrayAdjust" to preGrayAdjust,
-            "preGrayTTSAdjust" to preGrayTTSAdjust
-        )
-
-        if (existingIndex >= 0) {
-            // Remplacer l'ancien
-            bookmarksList[existingIndex] = newBookmark
-        } else {
-            // Ajouter un nouveau
-            bookmarksList.add(newBookmark)
-        }
-
-        // 4. Construire le JSON final
-        val bookmarksJson = StringBuilder()
-        bookmarksJson.append("{\n")
-        bookmarksJson.append("  \"bookmarks\": [\n")
-
-        bookmarksList.forEachIndexed { index, bookmark ->
-            bookmarksJson.append("    {\n")
-            bookmarksJson.append("      \"pdfPath\": \"${bookmark["pdfPath"]}\",\n")
-            bookmarksJson.append("      \"pageIndex\": ${bookmark["pageIndex"]},\n")
-            bookmarksJson.append("      \"thresholdBias\": ${bookmark["thresholdBias"]},\n")
-            bookmarksJson.append("      \"rectPadding\": ${bookmark["rectPadding"]},\n")
-            bookmarksJson.append("      \"contrastBoost\": ${bookmark["contrastBoost"]},\n")
-            bookmarksJson.append("      \"speechRate\": ${bookmark["speechRate"]},\n")
-            bookmarksJson.append("      \"minWidthRatio\": ${bookmark["minWidthRatio"]},\n")
-            bookmarksJson.append("      \"preGrayAdjust\": ${bookmark["preGrayAdjust"]},\n")
-            bookmarksJson.append("      \"preGrayTTSAdjust\": ${bookmark["preGrayTTSAdjust"]}\n")
-            bookmarksJson.append("    }")
-            if (index < bookmarksList.size - 1) bookmarksJson.append(",")
-            bookmarksJson.append("\n")
-        }
-
-        bookmarksJson.append("  ],\n")
-        bookmarksJson.append("  \"dernierLivre\": \"$pdfPath\"\n")
-        bookmarksJson.append("}")
-
-        Log.d("BOOKMARK_DEBUG", "=== CONTENU JSON À SAUVEGARDER ===")
-        Log.d("BOOKMARK_DEBUG", bookmarksJson.toString())  // ← Affiche le JSON complet
-        Log.d("BOOKMARK_DEBUG", "================================")
-
-        // 5. Sauvegarder
-        file.writeText(bookmarksJson.toString())
-        Log.d("BOOKMARK", "Fichier JSON mis à jour avec ${bookmarksList.size} signets")
-
-        // Lire et logguer le JSON sauvegardé
-        val savedContent = file.readText()
-        Log.d("BOOKMARK", "=== CONTENU JSON SAUVÉ ===")
-        Log.d("BOOKMARK", savedContent)
-        Log.d("BOOKMARK", "==========================")
-
-    } catch (e: Exception) {
-        Log.e("BOOKMARK", "ERREUR CRITIQUE: ${e.message}")
-        e.printStackTrace()
-    }
-}
-
-
-fun getBookmarkFromJson(context: Context, targetPdfPath: String? = null): Map<String, String> {
-    Log.d("BOOKMARK", "Recherche signet pour: $targetPdfPath")
-    return try {
-        val fileName = "bookmarks.json"
-        val file = File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), fileName)
-
-        if (!file.exists() || file.length() == 0L) {
-            return emptyMap()
-        }
-
-        val jsonString = file.readText()
-
-        // Si targetPdfPath est fourni, chercher CE livre spécifique
-        // Sinon, chercher le dernier livre
-        val pdfPathToFind = targetPdfPath ?: {
-            val dernierLivreRegex = "\"dernierLivre\"\\s*:\\s*\"([^\"]+)\"".toRegex()
-            dernierLivreRegex.find(jsonString)?.groupValues?.get(1)
-        }()
-
-        if (pdfPathToFind == null) {
-            return emptyMap()
-        }
-
-        // Chercher la page de ce livre
-        val escapedPath = Regex.escape(pdfPathToFind)
-        val bookmarkRegex = ("\"pdfPath\"\\s*:\\s*\"$escapedPath\"\\s*," +
-                "\\s*\"pageIndex\"\\s*:\\s*(\\d+)\\s*," +
-                "\\s*\"thresholdBias\"\\s*:\\s*([\\d.]+)\\s*," +
-                "\\s*\"rectPadding\"\\s*:\\s*([\\d.]+)\\s*," +
-                "\\s*\"contrastBoost\"\\s*:\\s*([\\d.]+)\\s*," +
-                "\\s*\"speechRate\"\\s*:\\s*([\\d.]+)\\s*," +
-                "\\s*\"minWidthRatio\"\\s*:\\s*([\\d.]+)\\s*," +
-                "\\s*\"preGrayAdjust\"\\s*:\\s*([\\d.-]+)\\s*," +  // ← AJOUTER \\s*,
-                "\\s*\"preGrayTTSAdjust\"\\s*:\\s*([\\d.Ee+-]+)").toRegex()  // ← NOUVELLE LIGNE
-
-
-        val bookmarkMatch = bookmarkRegex.find(jsonString)
-
-        if (bookmarkMatch != null) {
-            mapOf(
-                "pdfPath" to pdfPathToFind,
-                "pageIndex" to (bookmarkMatch.groupValues.getOrNull(1) ?: "0"),
-                "thresholdBias" to (bookmarkMatch.groupValues.getOrNull(2) ?: "40.0"),
-                "rectPadding" to (bookmarkMatch.groupValues.getOrNull(3) ?: "0.0"),
-                "contrastBoost" to (bookmarkMatch.groupValues.getOrNull(4) ?: "1.0"),
-                "speechRate" to (bookmarkMatch.groupValues.getOrNull(5) ?: "1.0"),
-                "minWidthRatio" to (bookmarkMatch.groupValues.getOrNull(6) ?: "0.15"),
-                "preGrayAdjust" to (bookmarkMatch.groupValues.getOrNull(7) ?: "0.0"),
-                "preGrayTTSAdjust" to (bookmarkMatch.groupValues.getOrNull(8) ?: "0.0")
-            )
-        } else {
-            mapOf("pdfPath" to pdfPathToFind, "pageIndex" to "0")
-        }
-
-    } catch (e: Exception) {
-        Log.e("BOOKMARK", "Erreur recherche signet", e)
-        emptyMap()
-    }
-}
-
-
-fun handleTtsButtonClick(
-    isSpeaking: Boolean,
-    tts: TextToSpeech?,
-    selectedRectIndices: Set<Int>,
-    rectangles: List<android.graphics.Rect>,
-    originalDisplayBitmap: Bitmap?,
-    speechRate: Float,
-    detectedTtsLocale: Locale?,
-    onSpeechStateChange: (Boolean) -> Unit,
-    onLocaleDetected: (Locale) -> Unit,
-    onPageAdvanceReset: () -> Unit,
-    onTextProcessed: (String) -> Unit,
-    onSetOcrLu: () -> Unit,
-    preGrayTTSAdjust: Float,
-    onOcrEmptyWarning: ((Boolean) -> Unit)? = null
-) {
-    if (isSpeaking) {
-        // Si en train de parler → arrêter
-        tts?.stop()
-        onSpeechStateChange(false)
-    } else {
-
-        onSetOcrLu()
-        // Si pas en train de parler → lancer l'OCR et TTS
-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-
-        val verticalTolerance = 60
-        val horizontalTolerance = 40
-        val selectedRects = selectedRectIndices
-            .map { rectangles[it] }
-            .sortedWith { r1, r2 ->
-                val dx = kotlin.math.abs(r1.left - r2.left)
-                if (dx <= horizontalTolerance) {
-                    r1.top - r2.top
-                } else {
-                    r1.left - r2.left
-                }
-            }
-
-        if (originalDisplayBitmap == null || selectedRects.isEmpty()) return
-
-        Log.d("PRE_GRAY_TTS", "Valeur du slider preGrayTTSAdjust avant traitement: $preGrayTTSAdjust")
-        Log.d("PRE_GRAY_TTS", "originalDisplayBitmap dimensions: ${originalDisplayBitmap?.width}x${originalDisplayBitmap?.height}")
-
-        // 👇 ÉTAPE CRUCIALE : Appliquer le prétraitement gris à l'image COMPLÈTE
-        val preprocessedBitmap = if (preGrayTTSAdjust != 0.0f) {
-            applyPreGrayAdjustment(originalDisplayBitmap, preGrayTTSAdjust)
-        } else {
-            originalDisplayBitmap
-        }
-
-        Log.d("PRE_GRAY_TTS", "Bitmap prétraité avec preGrayTTSAdjust = $preGrayTTSAdjust")
-
-        var pending = selectedRects.size
-        val collectedText = StringBuilder()
-
-        selectedRects.forEach { rect ->
-            val safeLeft = rect.left.coerceAtLeast(0)
-            val safeTop = rect.top.coerceAtLeast(0)
-            val safeWidth = rect.width().coerceAtMost(originalDisplayBitmap!!.width - safeLeft)
-            val safeHeight = rect.height().coerceAtMost(originalDisplayBitmap!!.height - safeTop)
-
-            if (safeWidth <= 0 || safeHeight <= 0) {
-                pending--
-                return@forEach
-            }
-
-            val cropped = Bitmap.createBitmap(
-                preprocessedBitmap,
-                safeLeft,
-                safeTop,
-                safeWidth,
-                safeHeight
-            )
-
-            val image = InputImage.fromBitmap(cropped, 0)
-
-            recognizer.process(image)
-                .addOnSuccessListener { visionText ->
-                    collectedText.appendLine(visionText.text)
-                    pending--
-                    if (pending == 0) {
-                        val finalText = cleanOcrTextForTts(collectedText.toString())
-
-                        if (finalText.isNotBlank()) {
-                            onTextProcessed(finalText)
-
-                            if (detectedTtsLocale == null) {
-                                detectLanguageAndSetTts(finalText, tts) { locale ->
-                                    onLocaleDetected(locale)
-                                    tts?.language = locale
-                                    tts?.setSpeechRate(speechRate)
-                                    onPageAdvanceReset()
-                                    speakLongText(tts, finalText)
-                                    onSpeechStateChange(true)
-                                }
-                            } else {
-                                tts?.language = detectedTtsLocale
-                                tts?.setSpeechRate(speechRate)
-                                onPageAdvanceReset()
-                                speakLongText(tts, finalText)
-                                onSpeechStateChange(true)
-                            }
-                        } else {  // ← NOUVEAU ELSE POUR TEXTE VIDE
-                            Log.d("PRE_GRAY_TTS", "OCR a retourné du texte vide")
-                            onOcrEmptyWarning?.invoke(true)
-                            onSpeechStateChange(false)
-                        }
-                    }
-                }
-                .addOnFailureListener {
-                    pending--
-                }
-        }
-    }
-}
-
-
-@Composable
-fun FlipScreenButton() {
-    // Etat de l'orientation de l'écran (true = portrait inversé, false = portrait normal)
-    val (isFlipped, setIsFlipped) = remember { mutableStateOf(false) }
-    val context = LocalContext.current
-
-    IconButton(onClick = {
-        val newState = !isFlipped
-        setIsFlipped(newState)
-
-        // Basculer entre portrait normal et portrait inversé
-        val activity = context as? ComponentActivity
-        activity?.let {
-            if (newState) {
-                // Portrait inversé (rotation 180°)
-                it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
-            } else {
-                // Portrait normal
-                it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            }
-        }
-    }) {
-        Icon(
-            imageVector = Icons.Default.ScreenRotation, // Icône appropriée pour rotation
-            contentDescription = if (isFlipped)
-                "Retour à l'orientation normale"
-            else "Retourner l'écran (180°)",
-            tint = if (isFlipped) Color.Red else Color.White
-        )
-    }
-}
-
-fun speakLongText(tts: TextToSpeech?, text: String) {
-    if (tts == null) {
-        Log.d("TTS_DEBUG", "speakLongText: tts est null")
-        return
-    }
-
-    Log.d("TTS_DEBUG", "=== DÉBUT speakLongText ===")
-    Log.d("TTS_DEBUG", "Texte d'entrée (${text.length} chars): ${text.take(100)}...")
-
-    // 1. Échapper les caractères XML
-    val escapedText = text
-        .replace("&", "&amp;")
-        .replace("\"", "&quot;")
-        .replace("'", "&apos;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace("...", ". ")
-        .replace("ndlr", "")
-
-    // 2. Ajouter les pauses SSML
-// 2. Ajouter les pauses SSML (une seule pause par fin de phrase ou ligne)
-    val textWithPauses = escapedText
-
-        .replace(Regex("\\.{2,}\\s*"), ",")
-        // Remplace ponctuation (.!?) suivie d'espaces ou retours chariots par ponctuation + 1 break
-        .replace(Regex("(?<!\\.)([.!?])(?!\\d)\\s*"), "$1 <break time=\"500ms\"/> ")
-        // Remplace les sauts de ligne restants (sans ponctuation) par 1 break
-        .replace(Regex("(?<!<break time=\"500ms\"/> )\\n"), " <break time=\"500ms\"/> ")
-
-    // 3. CRÉER LE SSML CORRECT AVEC EN-TÊTE XML
-
-
-    val zws = "\u200B\u200B\u200B" // Ajoutez cette ligne ici
-    val baseText = "$zws$textWithPauses"
-
-
-
-
-// 4. Diviser le texte en parties (en coupant après une balise break si possible)
-    val maxLength = 500 //3500
-    val parts = mutableListOf<String>()
-    var remaining = baseText // On utilise baseText au lieu de ssmlText
-
-    // parts.add(remaining)
-
-    Log.d("TTS_DEBUG", "Nombre de parties: ${parts.size}")
-
-    if (remaining.length <= maxLength) {
-        parts.add(remaining)
-        Log.d("TTS_DEBUG", "Texte court, pas de division nécessaire")
-    } else {
-        Log.d("TTS_DEBUG", "Division du texte nécessaire")
-
-        var loopCount = 0
-
-        while (remaining.length > maxLength) {
-            loopCount++
-
-            Log.d("TTS_DEBUG", "Boucle #$loopCount - remaining: ${remaining.length} chars")
-            Log.d("TTS_DEBUG", "Boucle while - remaining.length: ${remaining.length}, maxLength: $maxLength")
-
-            val searchWindow = remaining.substring(0, maxLength)
-            Log.d("TTS_DEBUG", "searchWindow.length: ${searchWindow.length}")
-
-            val lastBreakIndex = searchWindow.lastIndexOf("<break time=\"500ms\"/>")
-            Log.d("TTS_DEBUG", "lastBreakIndex: $lastBreakIndex")
-
-
-            val splitIndex = if (lastBreakIndex > 0) {
-                // Couper après le break SSML
-                lastBreakIndex + "<break time=\"500ms\"/>".length
-            } else {
-                // 2. Sinon chercher la fin d'une phrase
-                val lastSentenceEnd = searchWindow.lastIndexOfAny(listOf(". ", "! ", "? "))
-                if (lastSentenceEnd > 0) {
-                    lastSentenceEnd + 1
-                } else {
-                    // 3. Sinon couper au dernier espace
-                    val lastSpace = searchWindow.lastIndexOf(' ')
-                    if (lastSpace > 0) lastSpace else maxLength
-                }
-            }
-
-            // Ajouter la partie
-            parts.add(remaining.substring(0, splitIndex))
-            // Continuer avec le reste
-            remaining = remaining.substring(splitIndex)
-        }
-
-        // Ajouter le dernier morceau
-        if (remaining.isNotBlank()) {
-            parts.add(remaining)
-        }
-        Log.d("TTS_DEBUG", "Boucle exécutée $loopCount fois")
-    }
-
-
-
-    Log.d("TTS_DEBUG", "Nombre de parties créées: ${parts.size}")
-    parts.forEachIndexed { index, part ->
-        Log.d("TTS_DEBUG", "Partie $index: ${part.length} caractères - début: ${part.take(50)}...")
-    }
-
-
-    // 5. Arrêter toute lecture en cours
-    tts.stop()
-    Thread.sleep(100) // Petit délai après stop
-
-// 6. Envoyer chaque partie enveloppée dans son propre SSML
-    parts.forEachIndexed { index, part ->
-        val prefix = if (index == 0) zws else ""
-
-        val safePart = """<?xml version="1.0" encoding="UTF-8"?>
-    <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis">
-    $prefix$part
-    </speak>"""
-
-        // Définir l'ID
-        val utteranceId = if (index == parts.size - 1) "FINAL_PART" else "OCR_PART_$index"
-
-        // Définir le mode : Flush pour le premier, Add pour les suivants
-        val queueMode = if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
-
-        val params = Bundle().apply {
-            putString(TextToSpeech.Engine.KEY_PARAM_STREAM, TextToSpeech.Engine.DEFAULT_STREAM.toString())
-            putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId)
-            putString(TextToSpeech.Engine.KEY_FEATURE_NETWORK_SYNTHESIS, "true")
-        }
-
-        Log.d("TTS_DEBUG", "Appel tts.speak() partie $index ($queueMode) avec ID: $utteranceId (${safePart.length} chars)")
-        tts.speak(safePart, queueMode, params, utteranceId)
-
-        // Petit délai entre les parties
-        if (index < parts.size - 1) {
-            Thread.sleep(50)
-        }
-    }
-
-    Log.d("TTS_DEBUG", "=== FIN speakLongText ===")
-}
-
-fun handleTtsCompletion(
-    utteranceId: String?,
-    isSpeaking: Boolean,
-    autoPlayEnabled: Boolean,
-    onNextPage: (() -> Unit)?,
-    onAutoPlayEnabledChange: (Boolean) -> Unit,
-    onSelectedRectIndicesChange: (Set<Int>) -> Unit
-) {
-    if (utteranceId == "FINAL_PART") {
-        android.os.Handler(android.os.Looper.getMainLooper()).post {
-            if (!autoPlayEnabled) {
-                onNextPage?.invoke()
-            } else {
-                // Mode manuel : NE PAS avancer, mais décocher la case
-                onAutoPlayEnabledChange(false)
-                // ET désélectionner tous les cadres
-                onSelectedRectIndicesChange(emptySet())
-            }
-        }
-    }
-}
-
-// Ajoutez cette fonction dans le fichier ImageProcessing.kt
-fun applyPreGrayAdjustment(bitmap: Bitmap, preGrayAdjust: Float): Bitmap {
-    try {
-        Log.d("PRE_GRAY_TTS", "applyPreGrayAdjustment: preGrayAdjust = $preGrayAdjust")
-
-        // 1. Convertir le bitmap en Mat OpenCV
-        val srcMat = Mat()
-        Utils.bitmapToMat(bitmap, srcMat)
-
-        // 2. Convertir en niveaux de gris si nécessaire
-        val grayMat = Mat()
-        if (srcMat.channels() == 3) {
-            Imgproc.cvtColor(srcMat, grayMat, Imgproc.COLOR_RGB2GRAY)
-        } else if (srcMat.channels() == 4) {
-            Imgproc.cvtColor(srcMat, grayMat, Imgproc.COLOR_RGBA2GRAY)
-        } else {
-            srcMat.copyTo(grayMat)
-        }
-
-        // 3. Appliquer l'ajustement de luminosité/contraste
-        val adjustedMat = Mat()
-
-        // Si preGrayAdjust est positif : éclaircir
-        // Si preGrayAdjust est négatif : assombrir
-        // Facteur de contraste fixe à 1.0, on ajuste seulement la luminosité
-        val alpha = 1.0 // Facteur de contraste (inchangé)
-        val beta = preGrayAdjust * 255.0 // Ajustement de luminosité
-
-        grayMat.convertTo(adjustedMat, grayMat.type(), alpha, beta)
-
-        // 4. Reconvertir en bitmap
-        val resultBitmap = Bitmap.createBitmap(
-            bitmap.width,
-            bitmap.height,
-            Bitmap.Config.ARGB_8888
-        )
-
-        // Convertir le Mat gris en bitmap ARGB (3 canaux)
-        Imgproc.cvtColor(adjustedMat, adjustedMat, Imgproc.COLOR_GRAY2RGBA)
-        Utils.matToBitmap(adjustedMat, resultBitmap)
-
-        // 5. Libérer la mémoire
-        srcMat.release()
-        grayMat.release()
-        adjustedMat.release()
-
-
-        val pixelBefore = bitmap.getPixel(bitmap.width/2, bitmap.height/2)
-        val pixelAfter = resultBitmap.getPixel(resultBitmap.width/2, resultBitmap.height/2)
-
-        Log.d("PRE_GRAY_TTS", "Pixel avant traitement: ${pixelBefore.toUInt().toString(16)}")
-        Log.d("PRE_GRAY_TTS", "Pixel après traitement: ${pixelAfter.toUInt().toString(16)}")
-
-// Calculer la différence
-        val rBefore = android.graphics.Color.red(pixelBefore)
-        val gBefore = android.graphics.Color.green(pixelBefore)
-        val bBefore = android.graphics.Color.blue(pixelBefore)
-
-        val rAfter = android.graphics.Color.red(pixelAfter)
-        val gAfter = android.graphics.Color.green(pixelAfter)
-        val bAfter = android.graphics.Color.blue(pixelAfter)
-
-        Log.d("PRE_GRAY_TTS", "RGB avant: ($rBefore, $gBefore, $bBefore)")
-        Log.d("PRE_GRAY_TTS", "RGB après: ($rAfter, $gAfter, $bAfter)")
-
-
-        Log.d("PRE_GRAY_TTS", "applyPreGrayAdjustment: bitmap traité avec succès")
-        return resultBitmap
-
-    } catch (e: Exception) {
-        Log.e("PRE_GRAY_TTS", "Erreur dans applyPreGrayAdjustment", e)
-        return bitmap // Retourner l'original en cas d'erreur
-    }
-}
-
-fun relaunchTts(
-    tts: TextToSpeech?,
-    selectedRectIndices: Set<Int>,
-    rectangles: List<android.graphics.Rect>,
-    originalDisplayBitmap: Bitmap?,
-    speechRate: Float,
-    detectedTtsLocale: Locale?,
-    preGrayTTSAdjust: Float,
-    onSpeechStateChange: (Boolean) -> Unit,
-    onLocaleDetected: (Locale) -> Unit,
-    onPageAdvanceReset: () -> Unit,
-    onTextProcessed: (String) -> Unit,
-    onSetOcrLu: () -> Unit,
-    onOcrEmptyWarning: ((Boolean) -> Unit)? = null,
-    context: Context? = null
-) {
-    if (selectedRectIndices.isEmpty()) {
-        Log.d("RELAUNCH_TTS", "Aucun rectangle sélectionné, pas de relance")
-        return
-    }
-
-    // Forcer un nouvel OCR
-    onSetOcrLu.invoke()
-
-    Log.d("RELAUNCH_TTS", "Relance TTS (${selectedRectIndices.size} rectangles)")
-
-    handleTtsButtonClick(
-        isSpeaking = false,
-        tts = tts,
-        selectedRectIndices = selectedRectIndices,
-        rectangles = rectangles,
-        originalDisplayBitmap = originalDisplayBitmap,
-        speechRate = speechRate,
-        detectedTtsLocale = detectedTtsLocale,
-        onSpeechStateChange = onSpeechStateChange,
-        onLocaleDetected = onLocaleDetected,
-        onPageAdvanceReset = onPageAdvanceReset,
-        onTextProcessed = onTextProcessed,
-        onSetOcrLu = onSetOcrLu,
-        preGrayTTSAdjust = preGrayTTSAdjust,
-        onOcrEmptyWarning = onOcrEmptyWarning
-    )
-}
