@@ -144,6 +144,23 @@ object ImageProcessing {
             Size(12.0, 18.0)
         )
         Imgproc.morphologyEx(thresh, thresh, Imgproc.MORPH_CLOSE, blockKernel)
+
+        // 👇 COUPER LES PONTS HORIZONTAUX
+        val cutHorizontalKernel = Imgproc.getStructuringElement(
+            Imgproc.MORPH_RECT,
+            Size(25.0, 1.0)  // Long horizontal, fin vertical
+        )
+        Imgproc.morphologyEx(thresh, thresh, Imgproc.MORPH_OPEN, cutHorizontalKernel)
+        cutHorizontalKernel.release()
+
+// 👇 COUPER LES PONTS VERTICAUX
+        val cutVerticalKernel = Imgproc.getStructuringElement(
+            Imgproc.MORPH_RECT,
+            Size(1.0, 25.0)  // Long vertical, fin horizontal
+        )
+
+        Imgproc.morphologyEx(thresh, thresh, Imgproc.MORPH_OPEN, cutVerticalKernel)
+
         blockKernel.release()
 
 
@@ -177,6 +194,7 @@ object ImageProcessing {
         for (contour in contours) {
             val rect = Imgproc.boundingRect(contour)
             // if (isInsideImage(rect, imageRects)) continue
+
 
             // ❌ Ignore les cadres trop étroits (bruit)
             if (rect.width < src.width() * minWidthRatio) continue

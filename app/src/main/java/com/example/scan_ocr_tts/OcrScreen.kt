@@ -1,5 +1,6 @@
 package com.example.scan_ocr_tts
 
+import android.R.attr.enabled
 import com.example.scan_ocr_tts.*
 
 import org.opencv.android.Utils
@@ -272,9 +273,13 @@ fun OcrScreen(
         }
     }
 
+    var contrastBoostMode by rememberSaveable { mutableStateOf(!useHighRes) }
 
-    var contrastBoostMode by remember { mutableStateOf(true) }
-
+    LaunchedEffect(useHighRes) {
+        if (useHighRes) {
+            contrastBoostMode = false
+        }
+    }
 
     var displayBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var originalDisplayBitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -632,11 +637,18 @@ fun OcrScreen(
 //                    }
 
 // Contraste auto
-                    IconButton(onClick = { contrastBoostMode = !contrastBoostMode }) {
+                    IconButton(
+                        onClick = { contrastBoostMode = !contrastBoostMode },
+                        enabled = !useHighRes
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Tonality,
                             contentDescription = "Boost contraste",
-                            tint = if (contrastBoostMode) Color.Red else Color.White
+                            tint = when {
+                                useHighRes -> Color.Gray
+                                contrastBoostMode -> Color.Red
+                                else -> Color.White
+                            }
                         )
                     }
 
@@ -778,6 +790,7 @@ fun OcrScreen(
                 textAlign = TextAlign.Center
             )
         }
+
 
         Box(modifier = Modifier.fillMaxSize()) {
             val showResult = recognizedText.isNotBlank() &&
@@ -1076,6 +1089,32 @@ fun OcrScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
+
+                        // Sensibilité au texte
+                        Text(
+                            text = "Text sensitivity: ${"%.2f".format(contrastBoost)}",
+
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF0D47A1))
+                                .padding(vertical = 2.dp, horizontal = 8.dp)
+                        )
+
+                        Slider(
+                            value = contrastBoost,
+                            onValueChange = onContrastBoostChange,
+                            valueRange = 0.1f..1.35f,
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp)
+                                .height(24.dp)   // ← réduit la hauteur visuelle
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+
 //Seuil blanc minimum
 
                         Text(
@@ -1101,29 +1140,7 @@ fun OcrScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-// Sensibilité au texte
-                        Text(
-                            text = "Text sensitivity: ${"%.2f".format(contrastBoost)}",
 
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color(0xFF0D47A1))
-                                .padding(vertical = 2.dp, horizontal = 8.dp)
-                        )
-
-                        Slider(
-                            value = contrastBoost,
-                            onValueChange = onContrastBoostChange,
-                            valueRange = 0.1f..1.35f,
-                            modifier = Modifier
-                                .padding(horizontal = 16.dp)
-                                .height(24.dp)   // ← réduit la hauteur visuelle
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
 
 
 
