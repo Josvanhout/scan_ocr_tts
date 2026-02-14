@@ -9,6 +9,8 @@ import android.util.Log
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 
@@ -45,20 +47,30 @@ fun OcrScreenFromPdf(
     }
 
 
-    LaunchedEffect(pdfUri) {
+    LaunchedEffect(pdfUri, currentPageIndex, useHighRes) {  // ← AJOUTER useHighRes
         pdfUri?.let { uri ->
             try {
-                val fileDescriptor = context.contentResolver.openFileDescriptor(uri, "r") ?: return@let
-                val renderer = PdfRenderer(fileDescriptor)
+                Log.d("PAGE_TRACE", "RENDER start pageIndex=$currentPageIndex uri=$uri")
 
-                totalPages = renderer.pageCount
+                // Utiliser un contexte de coroutine approprié pour les opérations lourdes
+                withContext(Dispatchers.IO) {
+                    val (file, pageCount) = renderPdfPageToFile(
+                        context,
+                        uri,
+                        currentPageIndex,
+                        useHighRes
+                    )
 
-                Log.d("NAV_DEBUG", "PDF chargé → pages = $totalPages")
+                    // Revenir sur le thread principal pour mettre à jour l'état
+                    withContext(Dispatchers.Main) {
+                        imageFile = file
+                        totalPages = pageCount
+                    }
+                }
 
-                renderer.close()
-                fileDescriptor.close()
+                Log.d("PAGE_TRACE", "RENDER done pageIndex=$currentPageIndex")
             } catch (e: Exception) {
-                Log.e("NAV_DEBUG", "Erreur lecture PDF", e)
+                Log.e("NAV_DEBUG", "Erreur rendu page PDF", e)
             }
         }
     }

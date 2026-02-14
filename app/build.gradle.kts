@@ -19,8 +19,8 @@ android {
         applicationId = "com.example.scan_ocr_tts"
         minSdk = 30
         targetSdk = 34  // ↓ Réduit aussi
-        versionCode = 22
-        versionName = "2.0.2-beta"
+        versionCode = 24
+        versionName = "2.0.4-beta"
         resourceConfigurations += setOf("fr", "en", "es", "xxhdpi")
 
         // 🎯 OPTIMISATION RESSOURCES

@@ -277,7 +277,7 @@ fun OcrScreen(
 
     LaunchedEffect(useHighRes) {
         if (useHighRes) {
-            contrastBoostMode = false
+            // contrastBoostMode = false
         }
     }
 
@@ -590,20 +590,20 @@ fun OcrScreen(
 
 // Sortie du fichier JSON dans logcat
 
-                    IconButton(onClick = {
-                        val file = File(
-                            context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
-                            "bookmarks.json"
-                        )
-                        val content = if (file.exists()) file.readText() else "Fichier vide"
-                        Log.d("JSON_VIEWER", "Contenu JSON:\n$content")
-                    }) {
-                        Icon(
-                            imageVector = Icons.Default.Screenshot,
-                            contentDescription = "Log JSON",
-                            tint = Color.White
-                        )
-                    }
+//                    IconButton(onClick = {
+//                        val file = File(
+//                            context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
+//                            "bookmarks.json"
+//                        )
+//                        val content = if (file.exists()) file.readText() else "Fichier vide"
+//                        Log.d("JSON_VIEWER", "Contenu JSON:\n$content")
+//                    }) {
+//                        Icon(
+//                            imageVector = Icons.Default.Screenshot,
+//                            contentDescription = "Log JSON",
+//                            tint = Color.White
+//                        )
+//                    }
 
 // Rotation de l'écran
                     FlipScreenButton()
@@ -639,16 +639,12 @@ fun OcrScreen(
 // Contraste auto
                     IconButton(
                         onClick = { contrastBoostMode = !contrastBoostMode },
-                        enabled = !useHighRes
+                        // enabled = !useHighRes
                     ) {
                         Icon(
                             imageVector = Icons.Default.Tonality,
                             contentDescription = "Boost contraste",
-                            tint = when {
-                                useHighRes -> Color.Gray
-                                contrastBoostMode -> Color.Red
-                                else -> Color.White
-                            }
+                            tint = if (contrastBoostMode) Color.Red else Color.White
                         )
                     }
 

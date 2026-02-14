@@ -1,5 +1,8 @@
 package com.example.scan_ocr_tts
 
+
+
+import android.os.Environment
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -191,6 +194,66 @@ fun MainScreen(
 //            Text("Importer une image")
 //        }
 //
+// Dans MainScreen.kt, remplacez la section avec le bouton "Open a PDF file" par ceci :
+
+         Spacer(modifier = Modifier.height(32.dp))
+
+// 👇 BOUTON "Open last pdf" simplifié
+         var lastPdfPath by remember { mutableStateOf<String?>(null) }
+
+// Charger le dernier chemin depuis le JSON
+         LaunchedEffect(Unit) {
+             try {
+                 // Chercher le fichier bookmarks.json (comme dans votre OcrScreen)
+                 val jsonFile = File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "bookmarks.json")
+
+                 if (jsonFile.exists()) {
+                     val jsonString = jsonFile.readText()
+                     val jsonObject = org.json.JSONObject(jsonString)
+                     lastPdfPath = jsonObject.optString("dernierLivre", null)
+
+                     if (!lastPdfPath.isNullOrBlank()) {
+                         Log.d("MainScreen", "Dernier livre: $lastPdfPath")
+                     }
+                 }
+             } catch (e: Exception) {
+                 Log.e("MainScreen", "Erreur lecture JSON: ${e.message}")
+             }
+         }
+
+         Button(
+             onClick = {
+                 lastPdfPath?.let { path ->
+                     try {
+                         val uri = Uri.parse(path)
+                         onPdfSelected(uri)
+                     } catch (e: Exception) {
+                         Toast.makeText(context, "Erreur avec le dernier PDF", Toast.LENGTH_SHORT).show()
+                     }
+                 } ?: run {
+                     Toast.makeText(context, "Aucun dernier PDF trouvé", Toast.LENGTH_SHORT).show()
+                 }
+             },
+             modifier = Modifier.fillMaxWidth(0.6f),
+             enabled = !lastPdfPath.isNullOrBlank()
+         ) {
+             Text("Open last pdf")
+         }
+
+//         Spacer(modifier = Modifier.height(16.dp))
+//
+//         Button(
+//             onClick = {
+//                 pdfPickerLauncher.launch(arrayOf("application/pdf"))
+//             }
+//         ) {
+//             Text("Open a PDF file")
+//         }
+
+
+
+
+
        Spacer(modifier = Modifier.height(32.dp))
 
         Button(

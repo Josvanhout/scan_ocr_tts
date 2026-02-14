@@ -74,6 +74,10 @@ fun cleanOcrTextForTts(raw: String): String {
             if (text.last().isLetterOrDigit()) "$text." else text
         }
 
+        // supprime entre ( ) et [ ]
+        .replace(Regex("\\([^()]*\\)", RegexOption.DOT_MATCHES_ALL), "")
+        .replace(Regex("\\[[^\\[\\]]*\\]", RegexOption.DOT_MATCHES_ALL), "")
+
 
         // Sauts de ligne au milieu des phrases → espace
         .replace(Regex("(?<![.!?])\\n"), " ")
@@ -125,6 +129,36 @@ fun cleanOcrTextForTts(raw: String): String {
             if (n in 1..50) "${n}e siècle" else m.value
         }
 
+
+
+
+        // Détection pour l'espagnol : "siglo" + chiffre romain
+        .replace(Regex("\\bsiglo\\s+([A-Za-z*]{1,8})\\b", RegexOption.IGNORE_CASE)) { m ->
+            val raw = m.groupValues[1]
+                .replace(Regex("([xivlcdm])e$", RegexOption.IGNORE_CASE), "$1")
+                .replace(Regex("([xivlcdm])r$", RegexOption.IGNORE_CASE), "$1")
+
+            Log.d("NAV_DEBUG", "siglo brut détecté = $raw")
+
+            val roman = raw
+                .replace('1', 'I')
+                .replace('l', 'I')
+                .replace('v', 'V')
+                .replace('u', 'V')
+                .replace('r', 'I')
+                .replace("*", "")
+                .uppercase()
+
+            val n = romanToInt(roman)
+
+            Log.d("NAV_DEBUG", "siglo normalisé = $roman → $n")
+
+            if (n in 1..50) "siglo $n" else m.value
+        }
+
+
+
+
         .also { Log.d("NAV_DEBUG", "APRES SIECLES = $it") }
 
         // 2️⃣ CONVERSION EN MINUSCULES (avant le trim final)
@@ -133,6 +167,9 @@ fun cleanOcrTextForTts(raw: String): String {
         // Nettoyage final
         .trim()
 }
+
+
+
 
 fun romanToInt(roman: String): Int {
     val map = mapOf(
@@ -150,6 +187,82 @@ fun romanToInt(roman: String): Int {
     }
     return total
 }
+
+
+fun applyPreGrayAdjustment(bitmap: Bitmap, preGrayAdjust: Float): Bitmap {
+    try {
+        Log.d("PRE_GRAY_TTS", "applyPreGrayAdjustment: preGrayAdjust = $preGrayAdjust")
+
+        // 1. Convertir le bitmap en Mat OpenCV
+        val srcMat = Mat()
+        Utils.bitmapToMat(bitmap, srcMat)
+
+        // 2. Convertir en niveaux de gris si nécessaire
+        val grayMat = Mat()
+        if (srcMat.channels() == 3) {
+            Imgproc.cvtColor(srcMat, grayMat, Imgproc.COLOR_RGB2GRAY)
+        } else if (srcMat.channels() == 4) {
+            Imgproc.cvtColor(srcMat, grayMat, Imgproc.COLOR_RGBA2GRAY)
+        } else {
+            srcMat.copyTo(grayMat)
+        }
+
+        // 3. Appliquer l'ajustement de luminosité/contraste
+        val adjustedMat = Mat()
+
+        // Si preGrayAdjust est positif : éclaircir
+        // Si preGrayAdjust est négatif : assombrir
+        // Facteur de contraste fixe à 1.0, on ajuste seulement la luminosité
+        val alpha = 1.0 // Facteur de contraste (inchangé)
+        val beta = preGrayAdjust * 255.0 // Ajustement de luminosité
+
+        grayMat.convertTo(adjustedMat, grayMat.type(), alpha, beta)
+
+        // 4. Reconvertir en bitmap
+        val resultBitmap = Bitmap.createBitmap(
+            bitmap.width,
+            bitmap.height,
+            Bitmap.Config.ARGB_8888
+        )
+
+        // Convertir le Mat gris en bitmap ARGB (3 canaux)
+        Imgproc.cvtColor(adjustedMat, adjustedMat, Imgproc.COLOR_GRAY2RGBA)
+        Utils.matToBitmap(adjustedMat, resultBitmap)
+
+        // 5. Libérer la mémoire
+        srcMat.release()
+        grayMat.release()
+        adjustedMat.release()
+
+
+        val pixelBefore = bitmap.getPixel(bitmap.width/2, bitmap.height/2)
+        val pixelAfter = resultBitmap.getPixel(resultBitmap.width/2, resultBitmap.height/2)
+
+        Log.d("PRE_GRAY_TTS", "Pixel avant traitement: ${pixelBefore.toUInt().toString(16)}")
+        Log.d("PRE_GRAY_TTS", "Pixel après traitement: ${pixelAfter.toUInt().toString(16)}")
+
+// Calculer la différence
+        val rBefore = android.graphics.Color.red(pixelBefore)
+        val gBefore = android.graphics.Color.green(pixelBefore)
+        val bBefore = android.graphics.Color.blue(pixelBefore)
+
+        val rAfter = android.graphics.Color.red(pixelAfter)
+        val gAfter = android.graphics.Color.green(pixelAfter)
+        val bAfter = android.graphics.Color.blue(pixelAfter)
+
+        Log.d("PRE_GRAY_TTS", "RGB avant: ($rBefore, $gBefore, $bBefore)")
+        Log.d("PRE_GRAY_TTS", "RGB après: ($rAfter, $gAfter, $bAfter)")
+
+
+        Log.d("PRE_GRAY_TTS", "applyPreGrayAdjustment: bitmap traité avec succès")
+        return resultBitmap
+
+    } catch (e: Exception) {
+        Log.e("PRE_GRAY_TTS", "Erreur dans applyPreGrayAdjustment", e)
+        return bitmap // Retourner l'original en cas d'erreur
+    }
+}
+
 fun detectLanguageAndSetTts(
     text: String,
     tts: TextToSpeech?,
@@ -391,6 +504,83 @@ fun getBookmarkFromJson(context: Context, targetPdfPath: String? = null): Map<St
     }
 }
 
+fun speakLongText(
+    tts: TextToSpeech?,
+    text: String,
+    context: Context? = null,
+    forceOnlineMode: Boolean = false
+) {
+    if (tts == null) return
+
+    // Vérifier la connectivité (optionnel)
+    var isOnline = true
+    if (context != null) {
+        try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val activeNetwork: NetworkInfo? = cm.activeNetworkInfo
+            isOnline = activeNetwork?.isConnectedOrConnecting == true
+        } catch (e: Exception) {
+            Log.e("TTS_DEBUG", "Erreur vérification réseau", e)
+        }
+    }
+
+    val useOnlineMode = forceOnlineMode && isOnline
+    Log.d("TTS_DEBUG", "Mode: ${if (useOnlineMode) "ONLINE (forcé)" else "OFFLINE (par défaut)"}")
+
+    // 1. NETTOYAGE DE BASE
+    val cleanText = text
+        .replace("<[^>]*>".toRegex(), "")
+        .replace("&[a-z]+;".toRegex(), "")
+        .replace("&", "et")
+        .replace("\"", "")
+        .replace("'", "'")
+        .replace("<", "")
+        .replace(">", "")
+        .replace("...", ".")
+        .replace("ndlr", "")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
+    Log.d("TTS_DEBUG", "Texte nettoyé (${cleanText.length} chars): ${cleanText.take(100)}...")
+
+    // 2. DIVISION EN PHRASES
+    val sentences = cleanText.split(Regex("(?<=[.!?])\\s+"))
+    Log.d("TTS_DEBUG", "Nombre de phrases: ${sentences.size}")
+
+    // 3. ARRÊTER TOUTE LECTURE EN COURS
+    tts.stop()
+
+    // 4. LIRE LA PREMIÈRE PHRASE
+    if (sentences.isNotEmpty() && sentences[0].isNotBlank()) {
+        tts.speak(sentences[0], TextToSpeech.QUEUE_FLUSH, null,
+            if (sentences.size == 1) "FINAL_PART" else "SENTENCE_0")
+    }
+
+    // 5. POUR LES PHRASES SUIVANTES, UTILISER LE LISTENER POUR DÉCLENCHER LA SUITE
+    tts.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+        var currentIndex = 0
+
+        override fun onStart(utteranceId: String?) {
+            // Optionnel
+        }
+
+        override fun onDone(utteranceId: String?) {
+            currentIndex++
+
+            if (currentIndex < sentences.size && sentences[currentIndex].isNotBlank()) {
+                // Lire la phrase suivante sur le thread principal
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    val utteranceId = if (currentIndex == sentences.size - 1) "FINAL_PART" else "SENTENCE_$currentIndex"
+                    tts.speak(sentences[currentIndex], TextToSpeech.QUEUE_ADD, null, utteranceId)
+                }
+            }
+        }
+
+        override fun onError(utteranceId: String?) {
+            Log.e("TTS_DEBUG", "Erreur TTS pour utterance: $utteranceId")
+        }
+    })
+}
 
 fun handleTtsButtonClick(
     isSpeaking: Boolean,
@@ -437,8 +627,14 @@ fun handleTtsButtonClick(
 
         if (originalDisplayBitmap == null || selectedRects.isEmpty()) return
 
-        Log.d("PRE_GRAY_TTS", "Valeur du slider preGrayTTSAdjust avant traitement: $preGrayTTSAdjust")
-        Log.d("PRE_GRAY_TTS", "originalDisplayBitmap dimensions: ${originalDisplayBitmap?.width}x${originalDisplayBitmap?.height}")
+        Log.d(
+            "PRE_GRAY_TTS",
+            "Valeur du slider preGrayTTSAdjust avant traitement: $preGrayTTSAdjust"
+        )
+        Log.d(
+            "PRE_GRAY_TTS",
+            "originalDisplayBitmap dimensions: ${originalDisplayBitmap?.width}x${originalDisplayBitmap?.height}"
+        )
 
         // 👇 ÉTAPE CRUCIALE : Appliquer le prétraitement gris à l'image COMPLÈTE
         val preprocessedBitmap = if (preGrayTTSAdjust != 0.0f) {
@@ -480,515 +676,140 @@ fun handleTtsButtonClick(
                 if (pending == 0) {
                     val finalText = cleanOcrTextForTts(collectedText.toString())
 
-                    if (finalText.isNotBlank()) {
-                        onTextProcessed(finalText)
+                    if (pending == 0) {
+                        val finalText = cleanOcrTextForTts(collectedText.toString())
 
-                        if (detectedTtsLocale == null) {
-                            detectLanguageAndSetTts(finalText, tts) { locale ->
-                                onLocaleDetected(locale)
-                                tts?.language = locale
+                        if (finalText.isNotBlank()) {
+                            onTextProcessed(finalText)
+                            onSpeechStateChange(true)
+
+                            if (detectedTtsLocale == null) {
+                                detectLanguageAndSetTts(finalText, tts) { locale ->
+                                    onLocaleDetected(locale)
+                                    tts?.language = locale
+                                    tts?.setSpeechRate(speechRate)
+                                    onPageAdvanceReset()
+                                    speakLongText(tts, finalText, context = null)
+                                }
+                            } else {
+                                tts?.language = detectedTtsLocale
                                 tts?.setSpeechRate(speechRate)
                                 onPageAdvanceReset()
-                                speakLongText(tts, finalText)
-                                onSpeechStateChange(true)
+                                speakLongText(tts, finalText, context = null)
                             }
                         } else {
-                            tts?.language = detectedTtsLocale
-                            tts?.setSpeechRate(speechRate)
-                            onPageAdvanceReset()
-                            speakLongText(tts, finalText)
-                            onSpeechStateChange(true)
+                            Log.d("PRE_GRAY_TTS", "OCR a retourné du texte vide")
+                            onOcrEmptyWarning?.invoke(true)
+                            onSpeechStateChange(false)
                         }
-                    } else {
-                        Log.d("PRE_GRAY_TTS", "OCR a retourné du texte vide")
-                        onOcrEmptyWarning?.invoke(true)
-                        onSpeechStateChange(false)
                     }
                 }
             }
         }
     }
+
 }
 
 
-@Composable
-fun FlipScreenButton() {
-    // Etat de l'orientation de l'écran (true = portrait inversé, false = portrait normal)
-    val (isFlipped, setIsFlipped) = remember { mutableStateOf(false) }
-    val context = LocalContext.current
+    @Composable
+    fun FlipScreenButton() {
+        // Etat de l'orientation de l'écran (true = portrait inversé, false = portrait normal)
+        val (isFlipped, setIsFlipped) = remember { mutableStateOf(false) }
+        val context = LocalContext.current
 
-    IconButton(onClick = {
-        val newState = !isFlipped
-        setIsFlipped(newState)
+        IconButton(onClick = {
+            val newState = !isFlipped
+            setIsFlipped(newState)
 
-        // Basculer entre portrait normal et portrait inversé
-        val activity = context as? ComponentActivity
-        activity?.let {
-            if (newState) {
-                // Portrait inversé (rotation 180°)
-                it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
-            } else {
-                // Portrait normal
-                it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            }
-        }
-    }) {
-        Icon(
-            imageVector = Icons.Default.ScreenRotation, // Icône appropriée pour rotation
-            contentDescription = if (isFlipped)
-                "Retour à l'orientation normale"
-            else "Retourner l'écran (180°)",
-            tint = if (isFlipped) Color.Red else Color.White
-        )
-    }
-}
-
-
-fun speakLongText(
-    tts: TextToSpeech?,
-    text: String,
-    context: Context? = null,
-    forceOnlineMode: Boolean = false
-) {
-    if (tts == null) return
-
-    // Vérifier la connectivité
-    var isOnline = true
-    if (context != null) {
-        try {
-            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val activeNetwork: NetworkInfo? = cm.activeNetworkInfo
-            isOnline = activeNetwork?.isConnectedOrConnecting == true
-        } catch (e: Exception) {
-            Log.e("TTS_DEBUG", "Erreur vérification réseau", e)
-        }
-    }
-
-    // Décider du mode : offline sauf si forceOnlineMode ET réseau disponible
-    val useOnlineMode = forceOnlineMode && isOnline
-
-    Log.d("TTS_DEBUG", "Mode: ${if (useOnlineMode) "ONLINE (forcé)" else "OFFLINE (par défaut)"}")
-
-    if (useOnlineMode) {
-        Log.d("TTS_DEBUG", "Mode online demandé mais non implémenté, utilisation offline")
-    }
-
-    Log.d("TTS_DEBUG", "=== DÉBUT speakLongText (sans SSML) ===")
-    Log.d("TTS_DEBUG", "Texte d'entrée (${text.length} chars): ${text.take(100)}...")
-
-    // 1. NETTOYAGE DE BASE (COMME dans cleanOcrTextForTts mais adapté)
-    val cleanText = text
-        // Enlever toute balise XML résiduelle
-        .replace("<[^>]*>".toRegex(), "")
-        // Enlever les entités HTML
-        .replace("&[a-z]+;".toRegex(), "")
-        // Échappement des caractères spéciaux problématiques
-        .replace("&", "et")
-        .replace("\"", "")
-        .replace("'", "'")
-        .replace("<", "")
-        .replace(">", "")
-        // Remplacements spécifiques pour meilleure lecture
-        .replace("...", ".")
-        .replace("ndlr", "")
-        // Normalisation des espaces
-        .replace(Regex("\\s+"), " ")
-        .trim()
-
-    Log.d("TTS_DEBUG", "Texte nettoyé (${cleanText.length} chars): ${cleanText.take(100)}...")
-
-    // 2. DIVISION EN PHRASES POUR PAUSES NATURELLES
-    // Séparer par ponctuation de fin de phrase
-    val sentences = cleanText.split(Regex("(?<=[.!?])\\s+"))
-
-    Log.d("TTS_DEBUG", "Nombre de phrases: ${sentences.size}")
-
-    // 3. ARRÊTER TOUTE LECTURE EN COURS
-    tts.stop()
-    Thread.sleep(100)
-
-    // 4. LIRE CHAQUE PHRASE AVEC PAUSE ENTRE ELLES
-    sentences.forEachIndexed { index, sentence ->
-        // Ignorer les phrases vides
-        if (sentence.isBlank()) return@forEachIndexed
-
-        val mode = if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
-        val utteranceId = if (index == sentences.size - 1) "FINAL_PART" else "SENTENCE_$index"
-
-        // Parler la phrase
-        val result = tts.speak(sentence, mode, null, utteranceId)
-        Log.d("TTS_DEBUG", "Phrase $index: résultat=$result, '${sentence.take(30)}...'")
-
-        // Ajouter une pause naturelle entre les phrases (sauf la dernière)
-        if (index < sentences.size - 1) {
-            // Pause plus courte que 500ms pour fluidité
-            Thread.sleep(300)
-        }
-    }
-
-    Log.d("TTS_DEBUG", "=== FIN speakLongText (sans SSML) ===")
-}
-
-fun speakLongText1(
-    tts: TextToSpeech?,
-    text: String,
-    context: Context? = null,
-    forceOnlineMode: Boolean = false  // ← NOUVEAU paramètre
-) {
-    if (tts == null) return
-
-    // Vérifier la connectivité
-    var isOnline = true
-    if (context != null) {
-        try {
-            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val activeNetwork: NetworkInfo? = cm.activeNetworkInfo
-            isOnline = activeNetwork?.isConnectedOrConnecting == true
-        } catch (e: Exception) {
-            Log.e("TTS_DEBUG", "Erreur vérification réseau", e)
-        }
-    }
-
-    // Décider du mode : offline sauf si forceOnlineMode ET réseau disponible
-    val useOnlineMode = forceOnlineMode && isOnline
-
-    Log.d("TTS_DEBUG", "Mode: ${if (useOnlineMode) "ONLINE (forcé)" else "OFFLINE (par défaut)"}")
-
-    if (useOnlineMode) {
-        // ONLINE : Appeler votre ancienne fonction SSML (à recréer)
-        // speakLongTextOriginal(tts, text) // À implémenter si nécessaire
-        Log.d("TTS_DEBUG", "Mode online demandé mais non implémenté, utilisation offline")
-    }
-
-    // TOUJOURS utiliser offline par défaut (votre code actuel)
-    // Nettoyer mais garder la ponctuation pour les pauses
-    val cleanText = text
-        .replace("<[^>]*>".toRegex(), "") // Enlever balises XML
-        .replace("&[a-z]+;".toRegex(), "") // Enlever entités HTML
-        .replace(Regex("\\s+"), " ")
-        .trim()
-
-    // Diviser en phrases pour ajouter des pauses
-    val sentences = cleanText.split(Regex("(?<=[.!?])\\s+"))
-
-    Log.d("TTS_DEBUG", "Nombre de phrases: ${sentences.size}")
-
-    // Parler chaque phrase avec pause entre elles
-    sentences.forEachIndexed { index, sentence ->
-        val mode = if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
-        val utteranceId = if (index == sentences.size - 1) "FINAL_PART" else "SENTENCE_$index"
-
-        // Parler la phrase
-        val result = tts.speak(sentence, mode, null, utteranceId)
-        Log.d("TTS_DEBUG", "Phrase $index: résultat=$result, '${sentence.take(30)}...'")
-
-        // Ajouter une pause APRÈS la phrase (sauf la dernière)
-        if (index < sentences.size - 1) {
-            Thread.sleep(300) // Pause de 300ms entre phrases
-        }
-    }
-}
-
-fun speakLongText2(tts: TextToSpeech?, text: String) {
-
-    Log.d("TTS_DEBUG", "=== speakLongText DÉBUT ===")
-    Log.d("TTS_DEBUG", "tts is null: ${tts == null}, text length: ${text.length}")
-
-    if (tts == null) {
-        Log.d("TTS_DEBUG", "speakLongText: tts est null")
-        return
-    }
-
-    Log.d("TTS_DEBUG", "=== DÉBUT speakLongText ===")
-    Log.d("TTS_DEBUG", "Texte d'entrée (${text.length} chars): ${text.take(100)}...")
-
-    // 1. Échapper les caractères XML
-    val escapedText = text
-        .replace("&", "&amp;")
-        .replace("\"", "&quot;")
-        .replace("'", "&apos;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace("...", ". ")
-        .replace("ndlr", "")
-
-    // 2. Ajouter les pauses SSML
-// 2. Ajouter les pauses SSML (une seule pause par fin de phrase ou ligne)
-    val textWithPauses = escapedText
-
-        .replace(Regex("\\.{2,}\\s*"), ",")
-        // Remplace ponctuation (.!?) suivie d'espaces ou retours chariots par ponctuation + 1 break
-        .replace(Regex("(?<!\\.)([.!?])(?!\\d)\\s*"), "$1 <break time=\"500ms\"/> ")
-        // Remplace les sauts de ligne restants (sans ponctuation) par 1 break
-        .replace(Regex("(?<!<break time=\"500ms\"/> )\\n"), " <break time=\"500ms\"/> ")
-
-    // 3. CRÉER LE SSML CORRECT AVEC EN-TÊTE XML
-
-
-    val zws = "\u200B\u200B\u200B" // Ajoutez cette ligne ici
-//    val baseText = "\u200B$textWithPauses"
-    val baseText = textWithPauses
-
-
-    Log.d("TTS_DEBUG", "zws chars: '${zws.map { it.code.toString(16) }}'")
-    Log.d("TTS_DEBUG", "zws length: ${zws.length}")
-
-// ET AJOUTEZ APRÈS la ligne 'val baseText = "$zws$textWithPauses"' :
-    Log.d("TTS_DEBUG", "baseText premiers 10 chars codes: ${baseText.take(10).map { it.code.toString(16) }}")
-
-
-// 4. Diviser le texte en parties (en coupant après une balise break si possible)
-    val maxLength = 500 //3500
-    val parts = mutableListOf<String>()
-    var remaining = baseText // On utilise baseText au lieu de ssmlText
-
-    // parts.add(remaining)
-
-    Log.d("TTS_DEBUG", "Nombre de parties: ${parts.size}")
-
-    if (remaining.length <= maxLength) {
-        parts.add(remaining)
-        Log.d("TTS_DEBUG", "Texte court, pas de division nécessaire")
-
-        Log.d("TTS_DEBUG", "baseText.length: ${baseText.length}, maxLength: $maxLength")
-        Log.d("TTS_DEBUG", "Condition: baseText.length <= maxLength = ${baseText.length <= maxLength}")
-
-    } else {
-        Log.d("TTS_DEBUG", "Division du texte nécessaire")
-
-        var loopCount = 0
-
-        while (remaining.length > maxLength) {
-            loopCount++
-
-            Log.d("TTS_DEBUG", "Boucle #$loopCount - remaining: ${remaining.length} chars")
-            Log.d("TTS_DEBUG", "Boucle while - remaining.length: ${remaining.length}, maxLength: $maxLength")
-
-            val searchWindow = remaining.substring(0, maxLength)
-            Log.d("TTS_DEBUG", "searchWindow.length: ${searchWindow.length}")
-
-            val lastBreakIndex = searchWindow.lastIndexOf("<break time=\"500ms\"/>")
-            Log.d("TTS_DEBUG", "lastBreakIndex: $lastBreakIndex")
-
-
-            val splitIndex = if (lastBreakIndex > 0) {
-                // Couper après le break SSML
-                lastBreakIndex + "<break time=\"500ms\"/>".length
-            } else {
-                // 2. Sinon chercher la fin d'une phrase
-                val lastSentenceEnd = searchWindow.lastIndexOfAny(listOf(". ", "! ", "? "))
-                if (lastSentenceEnd > 0) {
-                    lastSentenceEnd + 1
+            // Basculer entre portrait normal et portrait inversé
+            val activity = context as? ComponentActivity
+            activity?.let {
+                if (newState) {
+                    // Portrait inversé (rotation 180°)
+                    it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
                 } else {
-                    // 3. Sinon couper au dernier espace
-                    val lastSpace = searchWindow.lastIndexOf(' ')
-                    if (lastSpace > 0) lastSpace else maxLength
+                    // Portrait normal
+                    it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                 }
             }
-
-            // Ajouter la partie
-            parts.add(remaining.substring(0, splitIndex))
-            // Continuer avec le reste
-            remaining = remaining.substring(splitIndex)
-        }
-
-        // Ajouter le dernier morceau
-        if (remaining.isNotBlank()) {
-            parts.add(remaining)
-        }
-        Log.d("TTS_DEBUG", "Boucle exécutée $loopCount fois")
-    }
-
-
-
-    Log.d("TTS_DEBUG", "Nombre de parties créées: ${parts.size}")
-    parts.forEachIndexed { index, part ->
-        Log.d("TTS_DEBUG", "Partie $index: ${part.length} caractères - début: ${part.take(50)}...")
-    }
-
-
-    // 5. Arrêter toute lecture en cours
-    tts.stop()
-    Thread.sleep(100) // Petit délai après stop
-
-// 6. Envoyer chaque partie enveloppée dans son propre SSML
-    parts.forEachIndexed { index, part ->
-//        val prefix = if (index == 0) "\u200B" else ""  // Un seul ZWS
-        val prefix = ""
-
-        val safePart = """<?xml version="1.0" encoding="UTF-8"?>
-    <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis">
-    $prefix$part
-    </speak>"""
-
-        // Définir l'ID
-        val utteranceId = if (index == parts.size - 1) "FINAL_PART" else "OCR_PART_$index"
-
-        // Définir le mode : Flush pour le premier, Add pour les suivants
-        val queueMode = if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
-
-        val params = Bundle().apply {
-            putString(TextToSpeech.Engine.KEY_PARAM_STREAM, TextToSpeech.Engine.DEFAULT_STREAM.toString())
-            putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId)
-            putString(TextToSpeech.Engine.KEY_FEATURE_NETWORK_SYNTHESIS, "true")
-        }
-
-        Log.d("TTS_DEBUG", "Appel tts.speak() partie $index ($queueMode) avec ID: $utteranceId (${safePart.length} chars)")
-
-        Log.d("TTS_DEBUG", "SSML généré (premiers 200 chars): ${safePart.take(200)}")
-
-        tts.language = Locale("es", "ES")
-        Log.d("TTS_DEBUG", "Locale forcée à: ${tts.language}")
-//        tts.speak(safePart, queueMode, params, utteranceId)
-        val speakResult = tts.speak(safePart, queueMode, params, utteranceId)
-        Log.d("TTS_DEBUG", "Résultat tts.speak(): $speakResult (0=SUCCESS, -1=ERROR)")
-
-        // Petit délai entre les parties
-        if (index < parts.size - 1) {
-            Thread.sleep(50)
+        }) {
+            Icon(
+                imageVector = Icons.Default.ScreenRotation, // Icône appropriée pour rotation
+                contentDescription = if (isFlipped)
+                    "Retour à l'orientation normale"
+                else "Retourner l'écran (180°)",
+                tint = if (isFlipped) Color.Red else Color.White
+            )
         }
     }
 
-    Log.d("TTS_DEBUG", "=== FIN speakLongText ===")
-}
 
-fun handleTtsCompletion(
-    utteranceId: String?,
-    isSpeaking: Boolean,
-    autoPlayEnabled: Boolean,
-    onNextPage: (() -> Unit)?,
-    onAutoPlayEnabledChange: (Boolean) -> Unit,
-    onSelectedRectIndicesChange: (Set<Int>) -> Unit
-) {
-    if (utteranceId == "FINAL_PART") {
-        android.os.Handler(android.os.Looper.getMainLooper()).post {
-            if (!autoPlayEnabled) {
-                onNextPage?.invoke()
-            } else {
-                // Mode manuel : NE PAS avancer, mais décocher la case
-                onAutoPlayEnabledChange(false)
-                // ET désélectionner tous les cadres
-                onSelectedRectIndicesChange(emptySet())
+    fun handleTtsCompletion(
+        utteranceId: String?,
+        isSpeaking: Boolean,
+        autoPlayEnabled: Boolean,
+        onNextPage: (() -> Unit)?,
+        onAutoPlayEnabledChange: (Boolean) -> Unit,
+        onSelectedRectIndicesChange: (Set<Int>) -> Unit
+    ) {
+        if (utteranceId == "FINAL_PART") {
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                if (!autoPlayEnabled) {
+                    onNextPage?.invoke()
+                } else {
+                    // Mode manuel : NE PAS avancer, mais décocher la case
+                    onAutoPlayEnabledChange(false)
+                    // ET désélectionner tous les cadres
+                    onSelectedRectIndicesChange(emptySet())
+                }
             }
         }
     }
-}
 
 // Ajoutez cette fonction dans le fichier ImageProcessing.kt
-fun applyPreGrayAdjustment(bitmap: Bitmap, preGrayAdjust: Float): Bitmap {
-    try {
-        Log.d("PRE_GRAY_TTS", "applyPreGrayAdjustment: preGrayAdjust = $preGrayAdjust")
 
-        // 1. Convertir le bitmap en Mat OpenCV
-        val srcMat = Mat()
-        Utils.bitmapToMat(bitmap, srcMat)
 
-        // 2. Convertir en niveaux de gris si nécessaire
-        val grayMat = Mat()
-        if (srcMat.channels() == 3) {
-            Imgproc.cvtColor(srcMat, grayMat, Imgproc.COLOR_RGB2GRAY)
-        } else if (srcMat.channels() == 4) {
-            Imgproc.cvtColor(srcMat, grayMat, Imgproc.COLOR_RGBA2GRAY)
-        } else {
-            srcMat.copyTo(grayMat)
+    fun relaunchTts(
+        tts: TextToSpeech?,
+        selectedRectIndices: Set<Int>,
+        rectangles: List<android.graphics.Rect>,
+        originalDisplayBitmap: Bitmap?,
+        speechRate: Float,
+        detectedTtsLocale: Locale?,
+        preGrayTTSAdjust: Float,
+        onSpeechStateChange: (Boolean) -> Unit,
+        onLocaleDetected: (Locale) -> Unit,
+        onPageAdvanceReset: () -> Unit,
+        onTextProcessed: (String) -> Unit,
+        onSetOcrLu: () -> Unit,
+        onOcrEmptyWarning: ((Boolean) -> Unit)? = null,
+        context: Context? = null
+    ) {
+        if (selectedRectIndices.isEmpty()) {
+            Log.d("RELAUNCH_TTS", "Aucun rectangle sélectionné, pas de relance")
+            return
         }
 
-        // 3. Appliquer l'ajustement de luminosité/contraste
-        val adjustedMat = Mat()
+        // Forcer un nouvel OCR
+        onSetOcrLu.invoke()
 
-        // Si preGrayAdjust est positif : éclaircir
-        // Si preGrayAdjust est négatif : assombrir
-        // Facteur de contraste fixe à 1.0, on ajuste seulement la luminosité
-        val alpha = 1.0 // Facteur de contraste (inchangé)
-        val beta = preGrayAdjust * 255.0 // Ajustement de luminosité
+        Log.d("RELAUNCH_TTS", "Relance TTS (${selectedRectIndices.size} rectangles)")
 
-        grayMat.convertTo(adjustedMat, grayMat.type(), alpha, beta)
-
-        // 4. Reconvertir en bitmap
-        val resultBitmap = Bitmap.createBitmap(
-            bitmap.width,
-            bitmap.height,
-            Bitmap.Config.ARGB_8888
+        handleTtsButtonClick(
+            isSpeaking = false,
+            tts = tts,
+            selectedRectIndices = selectedRectIndices,
+            rectangles = rectangles,
+            originalDisplayBitmap = originalDisplayBitmap,
+            speechRate = speechRate,
+            detectedTtsLocale = detectedTtsLocale,
+            onSpeechStateChange = onSpeechStateChange,
+            onLocaleDetected = onLocaleDetected,
+            onPageAdvanceReset = onPageAdvanceReset,
+            onTextProcessed = onTextProcessed,
+            onSetOcrLu = onSetOcrLu,
+            preGrayTTSAdjust = preGrayTTSAdjust,
+            onOcrEmptyWarning = onOcrEmptyWarning
         )
 
-        // Convertir le Mat gris en bitmap ARGB (3 canaux)
-        Imgproc.cvtColor(adjustedMat, adjustedMat, Imgproc.COLOR_GRAY2RGBA)
-        Utils.matToBitmap(adjustedMat, resultBitmap)
-
-        // 5. Libérer la mémoire
-        srcMat.release()
-        grayMat.release()
-        adjustedMat.release()
-
-
-        val pixelBefore = bitmap.getPixel(bitmap.width/2, bitmap.height/2)
-        val pixelAfter = resultBitmap.getPixel(resultBitmap.width/2, resultBitmap.height/2)
-
-        Log.d("PRE_GRAY_TTS", "Pixel avant traitement: ${pixelBefore.toUInt().toString(16)}")
-        Log.d("PRE_GRAY_TTS", "Pixel après traitement: ${pixelAfter.toUInt().toString(16)}")
-
-// Calculer la différence
-        val rBefore = android.graphics.Color.red(pixelBefore)
-        val gBefore = android.graphics.Color.green(pixelBefore)
-        val bBefore = android.graphics.Color.blue(pixelBefore)
-
-        val rAfter = android.graphics.Color.red(pixelAfter)
-        val gAfter = android.graphics.Color.green(pixelAfter)
-        val bAfter = android.graphics.Color.blue(pixelAfter)
-
-        Log.d("PRE_GRAY_TTS", "RGB avant: ($rBefore, $gBefore, $bBefore)")
-        Log.d("PRE_GRAY_TTS", "RGB après: ($rAfter, $gAfter, $bAfter)")
-
-
-        Log.d("PRE_GRAY_TTS", "applyPreGrayAdjustment: bitmap traité avec succès")
-        return resultBitmap
-
-    } catch (e: Exception) {
-        Log.e("PRE_GRAY_TTS", "Erreur dans applyPreGrayAdjustment", e)
-        return bitmap // Retourner l'original en cas d'erreur
-    }
-}
-
-fun relaunchTts(
-    tts: TextToSpeech?,
-    selectedRectIndices: Set<Int>,
-    rectangles: List<android.graphics.Rect>,
-    originalDisplayBitmap: Bitmap?,
-    speechRate: Float,
-    detectedTtsLocale: Locale?,
-    preGrayTTSAdjust: Float,
-    onSpeechStateChange: (Boolean) -> Unit,
-    onLocaleDetected: (Locale) -> Unit,
-    onPageAdvanceReset: () -> Unit,
-    onTextProcessed: (String) -> Unit,
-    onSetOcrLu: () -> Unit,
-    onOcrEmptyWarning: ((Boolean) -> Unit)? = null,
-    context: Context? = null
-) {
-    if (selectedRectIndices.isEmpty()) {
-        Log.d("RELAUNCH_TTS", "Aucun rectangle sélectionné, pas de relance")
-        return
-    }
-
-    // Forcer un nouvel OCR
-    onSetOcrLu.invoke()
-
-    Log.d("RELAUNCH_TTS", "Relance TTS (${selectedRectIndices.size} rectangles)")
-
-    handleTtsButtonClick(
-        isSpeaking = false,
-        tts = tts,
-        selectedRectIndices = selectedRectIndices,
-        rectangles = rectangles,
-        originalDisplayBitmap = originalDisplayBitmap,
-        speechRate = speechRate,
-        detectedTtsLocale = detectedTtsLocale,
-        onSpeechStateChange = onSpeechStateChange,
-        onLocaleDetected = onLocaleDetected,
-        onPageAdvanceReset = onPageAdvanceReset,
-        onTextProcessed = onTextProcessed,
-        onSetOcrLu = onSetOcrLu,
-        preGrayTTSAdjust = preGrayTTSAdjust,
-        onOcrEmptyWarning = onOcrEmptyWarning
-    )
 }
