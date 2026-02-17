@@ -61,8 +61,22 @@ object ImageProcessing {
         whiteThreshold: Float,  // <-- Float au lieu de Int, nom changé
         contrastBoost: Float,
         preGrayAdjust: Float = 0.0f,  // <-- NOUVEAU PARAMÈTRE ICI
-        minWidthRatio: Float = 0.15f
+        minWidthRatio: Float = 0.15f,
+        skipDetection: Boolean = false
     ): Pair<Bitmap, List<Rect>> {
+
+        if (skipDetection) {
+            Log.d("NO_SQUARES", "Détection de texte ignorée (mode no_squares)")
+            val resultBitmap = Bitmap.createBitmap(
+                bitmap.width,
+                bitmap.height,
+                Bitmap.Config.ARGB_8888
+            )
+            // Copier l'image originale
+            val canvas = android.graphics.Canvas(resultBitmap)
+            canvas.drawBitmap(bitmap, 0f, 0f, null)
+            return Pair(resultBitmap, emptyList())  // ← Liste vide = pas de cadres rouges
+        }
 
         val src = Mat()
         val gray = Mat()
@@ -201,8 +215,9 @@ object ImageProcessing {
 
             val area = rect.width * rect.height
             val aspect = rect.width.toFloat() / rect.height
-            // ❌ Supprimer seulement les petits blocs horizontaux (titres isolés, bruit)
-            if (rect.height < thresh.height() * 0.05 && aspect > 1.5f) continue
+
+            if (rect.height < thresh.height() * 0.02 && aspect > 3f) continue
+
             val imageArea = thresh.width() * thresh.height().toDouble()
             // ❌ Trop petit = bruit
             if (area < 1200) continue

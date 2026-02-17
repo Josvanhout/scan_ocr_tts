@@ -24,6 +24,8 @@ fun OcrScreenFromPdf(
     val prefs = context.applicationContext.getSharedPreferences("ocr_settings", Context.MODE_PRIVATE)
 
     var useHighRes by remember { mutableStateOf(false) }
+    var highResScaleFactor by rememberSaveable { mutableStateOf(1.3f) }
+
     var imageFile by remember { mutableStateOf<File?>(null) }
     var currentPageIndex by remember { mutableStateOf(0) }
     var totalPages by remember { mutableStateOf(1) }
@@ -40,14 +42,19 @@ fun OcrScreenFromPdf(
                 .putFloat("rectPadding", rectPadding)
                 .putFloat("contrastBoost", contrastBoost)
                 .putFloat("speechRate", speechRate)
+                .putFloat("highResScaleFactor", highResScaleFactor)
                 .commit()
 
             Log.d("PREFS_DEBUG", "SAVED ON DISPOSE")
         }
     }
 
+    // Charger la valeur sauvegardée au démarrage
+    LaunchedEffect(Unit) {
+        highResScaleFactor = prefs.getFloat("highResScaleFactor", 1.3f)
+    }
 
-    LaunchedEffect(pdfUri, currentPageIndex, useHighRes) {  // ← AJOUTER useHighRes
+    LaunchedEffect(pdfUri, currentPageIndex, useHighRes, highResScaleFactor) {  // ← AJOUTER useHighRes
         pdfUri?.let { uri ->
             try {
                 Log.d("PAGE_TRACE", "RENDER start pageIndex=$currentPageIndex uri=$uri")
@@ -58,7 +65,8 @@ fun OcrScreenFromPdf(
                         context,
                         uri,
                         currentPageIndex,
-                        useHighRes
+                        useHighRes,
+                        highResScaleFactor
                     )
 
                     // Revenir sur le thread principal pour mettre à jour l'état
@@ -75,29 +83,7 @@ fun OcrScreenFromPdf(
         }
     }
 
-    LaunchedEffect(pdfUri, currentPageIndex) {
-        pdfUri?.let { uri ->
-            try {
-                Log.d("PAGE_TRACE", "RENDER start pageIndex=$currentPageIndex uri=$uri")
 
-                // AJOUTE useHighRes comme 4ème paramètre
-                val (file, pageCount) = renderPdfPageToFile(
-                    context,
-                    uri,
-                    currentPageIndex,
-                    useHighRes  // ← AJOUTE ce paramètre
-                )
-
-                imageFile = file
-                Log.d("PAGE_TRACE", "RENDER done pageIndex=$currentPageIndex file=${file.absolutePath}")
-
-                totalPages = pageCount
-                Log.d("NAV_DEBUG", "Page rendue = $currentPageIndex / $totalPages")
-            } catch (e: Exception) {
-                Log.e("NAV_DEBUG", "Erreur rendu page PDF", e)
-            }
-        }
-    }
 
 
 
@@ -159,8 +145,12 @@ fun OcrScreenFromPdf(
             currentPageIndex = currentPageIndex,
             totalPages = totalPages,
             useHighRes = useHighRes,  // ← AJOUTE
-            onUseHighResChange = { useHighRes = it }  // ← AJOUTE
-
+            onUseHighResChange = { useHighRes = it },  // ← AJOUTE
+            highResScaleFactor = highResScaleFactor,
+            onHighResScaleChange = { newScale ->
+                highResScaleFactor = newScale
+                prefs.edit().putFloat("highResScaleFactor", newScale).apply()
+            },
 
 
         )
@@ -171,7 +161,8 @@ private fun renderPdfPageToFile(
     context: Context,
     uri: Uri,
     pageIndex: Int,
-    useHighRes: Boolean  // ← NOUVEAU paramètre
+    useHighRes: Boolean,
+    highResScaleFactor: Float  // ← NOUVEAU paramètre
 ): Pair<File, Int> {
     val fileDescriptor = context.contentResolver.openFileDescriptor(uri, "r")!!
     val renderer = PdfRenderer(fileDescriptor)
@@ -179,8 +170,8 @@ private fun renderPdfPageToFile(
     val page = renderer.openPage(pageIndex)
 
     // TEST SIMPLE : juste augmenter de 2x
-    val scaleFactor = if (useHighRes) 1.5f else 1.0f
-
+    val scaleFactor = if (useHighRes) highResScaleFactor else 1.0f
+    Log.d("PDF_RENDER", "Rendering page $pageIndex with scaleFactor=$scaleFactor (useHighRes=$useHighRes, highResScaleFactor=$highResScaleFactor)")
     val bitmap = Bitmap.createBitmap(
         (page.width * scaleFactor).toInt(),  // ← CHANGEMENT
         (page.height * scaleFactor).toInt(), // ← CHANGEMENT

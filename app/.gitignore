@@ -1,1 +1,36 @@
-/build
+# --- Fichiers système et IDE ---
+.idea/
+*.iml
+.DS_Store
+captures/
+.externalNativeBuild
+.cxx/
+local.properties
+
+# --- Gradle et Build (CRUCIAL pour éviter les timeouts) ---
+.gradle/
+build/
+*/build/
+captures/
+
+# --- Dépendances (Ne jamais envoyer à l'IA) ---
+node_modules/
+.kotlin/
+
+# --- Android Studio spécifiques ---
+*.hprof
+.navigation/
+assetpack/
+
+# --- Google Services (Clés API privées) ---
+# Ne pas partager vos clés avec l'IA pour la sécurité
+google-services.json
+endpoint-google-services.json
+
+# --- Firebase & Crashlytics ---
+com_google_firebase_crashlytics_*.properties
+
+# --- Fichiers de log et temporaires ---
+*.log
+*.bak
+*.swp

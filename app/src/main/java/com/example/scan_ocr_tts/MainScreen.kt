@@ -202,15 +202,23 @@ fun MainScreen(
          var lastPdfPath by remember { mutableStateOf<String?>(null) }
 
 // Charger le dernier chemin depuis le JSON
+         // Charger le dernier chemin depuis le JSON
          LaunchedEffect(Unit) {
              try {
                  // Chercher le fichier bookmarks.json (comme dans votre OcrScreen)
                  val jsonFile = File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "bookmarks.json")
+                 Log.d("MainScreen", "Chemin du fichier JSON: ${jsonFile.absolutePath}")
+                 Log.d("MainScreen", "Fichier existe? ${jsonFile.exists()}")
 
                  if (jsonFile.exists()) {
                      val jsonString = jsonFile.readText()
+                     Log.d("MainScreen", "Contenu JSON: $jsonString")
+
                      val jsonObject = org.json.JSONObject(jsonString)
                      lastPdfPath = jsonObject.optString("dernierLivre", null)
+
+                     Log.d("MainScreen", "dernierLivre trouvé: $lastPdfPath")
+                     Log.d("MainScreen", "lastPdfPath.isNullOrBlank? ${lastPdfPath.isNullOrBlank()}")
 
                      if (!lastPdfPath.isNullOrBlank()) {
                          Log.d("MainScreen", "Dernier livre: $lastPdfPath")

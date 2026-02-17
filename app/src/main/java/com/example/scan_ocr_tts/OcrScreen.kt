@@ -21,6 +21,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,6 +37,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddComment
@@ -45,6 +47,8 @@ import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.DensityMedium
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 
 import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.Screenshot
@@ -126,7 +130,8 @@ fun OcrScreen(
     speechRate: Float,
     onSpeechRateChange: (Float) -> Unit,
     onContrastBoostChange: (Float) -> Unit,
-
+    highResScaleFactor: Float = 1.3f,
+    onHighResScaleChange: ((Float) -> Unit)? = null,
     onNext: () -> Unit,
 //    onLeavingScreen: () -> Unit,
 
@@ -147,6 +152,8 @@ fun OcrScreen(
     var recognizedText by remember { mutableStateOf("") }
 
     val context = LocalContext.current
+
+
 
 
     // Vérification OCR au chargement de l'écran
@@ -222,10 +229,14 @@ fun OcrScreen(
 
     var lastRestoredPdf by rememberSaveable { mutableStateOf<String?>(null) }
 
+
+
     // NOUVELLES VARIABLES
 //    var lignes_tts by remember { mutableStateOf<List<String>>(emptyList()) }
 //    var index_lise_tts by remember { mutableStateOf(0) }
 //    var pause_tts by remember { mutableStateOf(false) }
+
+
 
 
     LaunchedEffect(pdfIdentity) {
@@ -236,9 +247,11 @@ fun OcrScreen(
             // Restauration depuis le JSON
             val bookmarkData = getBookmarkFromJson(context, pdfIdentity)
             val savedPdfPath = bookmarkData["pdfPath"] ?: prefs.getString("lastPdfPath", null)
-            val savedPage =
-                if (savedPdfPath == pdfIdentity) bookmarkData["pageIndex"]?.toIntOrNull()
-                    ?: 0 else 0
+            val savedPage = if (savedPdfPath == pdfIdentity) {
+                val pageStr = bookmarkData["pageIndex"]
+                Log.d("BOOKMARK_DEBUG", "Valeur pageIndex lue = '$pageStr'")
+                pageStr?.toIntOrNull() ?: 0
+            } else 0
 
             Log.d("BOOKMARK_DEBUG", "savedPdfPath: $savedPdfPath")
             Log.d("BOOKMARK_DEBUG", "savedPage: $savedPage")
@@ -261,6 +274,12 @@ fun OcrScreen(
                         onUseHighResChange(savedUseHighRes)
                     }
                 }
+                bookmarkData["highResScaleFactor"]?.toFloatOrNull()?.let { savedScale ->
+                    onHighResScaleChange?.invoke(savedScale)
+                    Log.d("BOOKMARK_DEBUG", "Restauration highResScaleFactor: $savedScale")
+                }
+                Log.d("BOOKMARK_DEBUG", "✓ RESTAURATION: Aller à page $savedPage")
+
                 Log.d("BOOKMARK_DEBUG", "✓ RESTAURATION: Aller à page $savedPage")
                 onGoToPage?.invoke(savedPage)
             } else {
@@ -290,7 +309,7 @@ fun OcrScreen(
 
 
     var lastSpokenText by remember { mutableStateOf("") }
-
+    var no_squares by remember { mutableStateOf(false) }
     var showControls by rememberSaveable { mutableStateOf(false) }
     var showControls2 by rememberSaveable { mutableStateOf(false) }
     var showProcessed by rememberSaveable { mutableStateOf(false) }
@@ -298,6 +317,7 @@ fun OcrScreen(
     var autoPlayEnabled by remember { mutableStateOf(false) }
     var tts by remember { mutableStateOf<TextToSpeech?>(null) }
     var isSpeaking by remember { mutableStateOf(false) }
+
 
     // var speechRate by rememberSaveable { mutableStateOf(prefs.getFloat("speechRate", 1.0f)) }
     var detectedTtsLocale by remember { mutableStateOf<Locale?>(null) }
@@ -322,6 +342,7 @@ fun OcrScreen(
         }
         OCR_lu = false  // Forcer re-OCR après changement de sélection
     }
+
 
 
     LaunchedEffect(speechRate) {
@@ -475,7 +496,8 @@ fun OcrScreen(
             thresholdBias,
             contrastBoost,
             preGrayAdjust,
-            minWidthRatio  // <-- AJOUTER CE PARAMÈTRE
+            minWidthRatio,
+            skipDetection = no_squares
         )
         Log.d("PRE_GRAY_CALL", "Appel toAdaptiveThreshold avec preGrayAdjust = $preGrayAdjust")
 
@@ -590,20 +612,20 @@ fun OcrScreen(
 
 // Sortie du fichier JSON dans logcat
 
-//                    IconButton(onClick = {
-//                        val file = File(
-//                            context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
-//                            "bookmarks.json"
-//                        )
-//                        val content = if (file.exists()) file.readText() else "Fichier vide"
-//                        Log.d("JSON_VIEWER", "Contenu JSON:\n$content")
-//                    }) {
-//                        Icon(
-//                            imageVector = Icons.Default.Screenshot,
-//                            contentDescription = "Log JSON",
-//                            tint = Color.White
-//                        )
-//                    }
+                    IconButton(onClick = {
+                        val file = File(
+                            context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
+                            "bookmarks.json"
+                        )
+                        val content = if (file.exists()) file.readText() else "Fichier vide"
+                        Log.d("JSON_VIEWER", "Contenu JSON:\n$content")
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Screenshot,
+                            contentDescription = "Log JSON",
+                            tint = Color.White
+                        )
+                    }
 
 // Rotation de l'écran
                     FlipScreenButton()
@@ -739,7 +761,8 @@ fun OcrScreen(
                                 minWidthRatio = minWidthRatio,
                                 preGrayAdjust = preGrayAdjust,
                                 preGrayTTSAdjust = String.format(Locale.US, "%.2f", preGrayTTSAdjust).toFloat(),
-                                useHighRes = useHighRes
+                                useHighRes = useHighRes,
+                                highResScaleFactor = highResScaleFactor
                             )
 
                             onNext()  // ← RETOUR À L'ACCUEIL
@@ -937,7 +960,14 @@ fun OcrScreen(
                         // Checkbox et label
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(bottom = 8.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp)
+                                .background(
+                                    color = Color(0xFFB71C1C),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+
                         ) {
                             Checkbox(
                                 checked = useHighRes,
@@ -949,10 +979,32 @@ fun OcrScreen(
                                 )
                             )
                             Text(
-                                "High-resolution PDF (scaleFactor 1.5)",
-                                color = Color.Black,
-                                fontWeight = FontWeight.Bold
+                                "High-res.",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(end = 8.dp)
                             )
+
+                            if (useHighRes) {
+                                Text(
+                                    text = String.format("%.1fx", highResScaleFactor),
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(end = 4.dp)
+                                )
+
+                                Slider(
+                                    value = highResScaleFactor,
+                                    onValueChange = { newValue ->
+                                        onHighResScaleChange?.invoke(newValue)
+                                    },
+                                    valueRange = 1.1f..1.5f,
+                                    steps = 3,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(24.dp)
+                                )
+                            }
                         }
 
                         // Pré-traitement gris pour le tts
@@ -1316,20 +1368,23 @@ fun OcrScreen(
                         Text(">")
                     }
 
+                    // Spacer(modifier = Modifier.width(8.dp))
+
+
                     Spacer(modifier = Modifier.width(8.dp))
-                    // Texte à gauche de la checkbox
-                    Text(
-                        text = "sel. frames",
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        modifier = Modifier
-                            .padding(end = 4.dp)
-                            .background(
-                                color = Color(0xFF0047AB), // Remplacez par MaterialTheme.colorScheme.primary pour une correspondance parfaite
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(50) // 50% pour un effet "pilule" comme vos boutons
-                            )
-                            .padding(horizontal = 12.dp, vertical = 6.dp) // Espacement interne pour le confort visuel
-                    )
+//                    // Texte à gauche de la checkbox
+//                    Text(
+//                        text = "sel. frames",
+//                        color = Color.White,
+//                        fontSize = 8.sp,
+//                        modifier = Modifier
+//                            .padding(end = 2.dp)
+//                            .background(
+//                                color = Color(0xFF0047AB), // Remplacez par MaterialTheme.colorScheme.primary pour une correspondance parfaite
+//                                shape = androidx.compose.foundation.shape.RoundedCornerShape(50) // 50% pour un effet "pilule" comme vos boutons
+//                            )
+//                            .padding(horizontal = 12.dp, vertical = 6.dp) // Espacement interne pour le confort visuel
+//                    )
 
                     // La checkbox
                     Checkbox(
@@ -1375,8 +1430,25 @@ fun OcrScreen(
                                     }
                                 }
                             }
-                        }
+                        },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Color.Red,        // Case rouge quand cochée
+                            uncheckedColor = Color.Red,      // Case rouge quand non cochée
+                            checkmarkColor = Color.White     // Coche blanche pour le contraste
+                        )
                     )
+
+                    Checkbox(
+                        checked = no_squares,
+                        onCheckedChange = { no_squares = it },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Color.Blue,        // Case bleue quand cochée
+                            uncheckedColor = Color.Blue,      // Case bleue quand non cochée
+                            checkmarkColor = Color.White      // Coche blanche pour le contraste
+                        )
+                    )
+
+
                 }
 
 

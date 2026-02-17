@@ -310,7 +310,8 @@ fun saveBookmarkToJson(
     minWidthRatio: Float,
     preGrayAdjust: Float,
     preGrayTTSAdjust: Float,
-    useHighRes: Boolean
+    useHighRes: Boolean,
+    highResScaleFactor: Float
 ) {
     try {
         Log.d("BOOKMARK", "Sauvegarde JSON pour: $pdfPath page $pageIndex")
@@ -384,7 +385,8 @@ fun saveBookmarkToJson(
             "minWidthRatio" to minWidthRatio,
             "preGrayAdjust" to preGrayAdjust,
             "preGrayTTSAdjust" to preGrayTTSAdjust,
-            "useHighRes" to useHighRes
+            "useHighRes" to useHighRes,
+            "highResScaleFactor" to highResScaleFactor
         )
 
         if (existingIndex >= 0) {
@@ -411,7 +413,8 @@ fun saveBookmarkToJson(
             bookmarksJson.append("      \"minWidthRatio\": ${bookmark["minWidthRatio"]},\n")
             bookmarksJson.append("      \"preGrayAdjust\": ${bookmark["preGrayAdjust"]},\n")
             bookmarksJson.append("      \"preGrayTTSAdjust\": ${bookmark["preGrayTTSAdjust"]},\n")
-            bookmarksJson.append("      \"useHighRes\": ${bookmark["useHighRes"]}\n")
+            bookmarksJson.append("      \"useHighRes\": ${bookmark["useHighRes"]},\n")
+            bookmarksJson.append("      \"highResScaleFactor\": ${bookmark["highResScaleFactor"]}\n")
             bookmarksJson.append("    }")
             if (index < bookmarksList.size - 1) bookmarksJson.append(",")
             bookmarksJson.append("\n")
@@ -476,12 +479,16 @@ fun getBookmarkFromJson(context: Context, targetPdfPath: String? = null): Map<St
                 "\\s*\"minWidthRatio\"\\s*:\\s*([\\d.]+)\\s*," +
                 "\\s*\"preGrayAdjust\"\\s*:\\s*([\\d.-]+)\\s*," +  // ← AJOUTER \\s*,
                 "\\s*\"preGrayTTSAdjust\"\\s*:\\s*([\\d.Ee+-]+)\\s*," +  // ← Ajouter \\s*, à la fin
-                "\\s*\"useHighRes\"\\s*:\\s*(true|false|null)").toRegex()
+                "\\s*\"useHighRes\"\\s*:\\s*(true|false|null)\\s*,?\\s*" +
+                "(?:\"highResScaleFactor\"\\s*:\\s*([\\d.]+)\\s*,?)?").toRegex()
 
 
         val bookmarkMatch = bookmarkRegex.find(jsonString)
+        Log.d("BOOKMARK_REGEX", "bookmarkMatch trouvé: ${bookmarkMatch != null}")
 
         if (bookmarkMatch != null) {
+            Log.d("BOOKMARK_REGEX", "Nombre de groupes: ${bookmarkMatch.groupValues.size}")
+            Log.d("BOOKMARK_REGEX", "Groupes: ${bookmarkMatch.groupValues}")
             mapOf(
                 "pdfPath" to pdfPathToFind,
                 "pageIndex" to (bookmarkMatch.groupValues.getOrNull(1) ?: "0"),
@@ -492,7 +499,9 @@ fun getBookmarkFromJson(context: Context, targetPdfPath: String? = null): Map<St
                 "minWidthRatio" to (bookmarkMatch.groupValues.getOrNull(6) ?: "0.15"),
                 "preGrayAdjust" to (bookmarkMatch.groupValues.getOrNull(7) ?: "0.0"),
                 "preGrayTTSAdjust" to (bookmarkMatch.groupValues.getOrNull(8) ?: "0.0"),
-                "useHighRes" to (bookmarkMatch.groupValues.getOrNull(9) ?: "null")
+                "useHighRes" to (bookmarkMatch.groupValues.getOrNull(9) ?: "null"),
+                "highResScaleFactor" to (bookmarkMatch.groupValues.getOrNull(10) ?:
+                bookmarkMatch.groupValues.getOrNull(11) ?: "1.3")
             )
         } else {
             mapOf("pdfPath" to pdfPathToFind, "pageIndex" to "0")
@@ -552,34 +561,26 @@ fun speakLongText(
 
     // 4. LIRE LA PREMIÈRE PHRASE
     if (sentences.isNotEmpty() && sentences[0].isNotBlank()) {
-        tts.speak(sentences[0], TextToSpeech.QUEUE_FLUSH, null,
-            if (sentences.size == 1) "FINAL_PART" else "SENTENCE_0")
+        val utteranceId = if (sentences.size == 1) "FINAL_PART" else "SENTENCE_0"
+        tts.speak(sentences[0], TextToSpeech.QUEUE_FLUSH, null, utteranceId)
     }
 
-    // 5. POUR LES PHRASES SUIVANTES, UTILISER LE LISTENER POUR DÉCLENCHER LA SUITE
-    tts.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
-        var currentIndex = 0
+    // 5. POUR LES PHRASES SUIVANTES, LES AJOUTER UNE PAR UNE
+    var currentIndex = 0
 
-        override fun onStart(utteranceId: String?) {
-            // Optionnel
-        }
-
-        override fun onDone(utteranceId: String?) {
+    val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    val runnable = object : Runnable {
+        override fun run() {
             currentIndex++
-
             if (currentIndex < sentences.size && sentences[currentIndex].isNotBlank()) {
-                // Lire la phrase suivante sur le thread principal
-                android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    val utteranceId = if (currentIndex == sentences.size - 1) "FINAL_PART" else "SENTENCE_$currentIndex"
-                    tts.speak(sentences[currentIndex], TextToSpeech.QUEUE_ADD, null, utteranceId)
-                }
+                val utteranceId = if (currentIndex == sentences.size - 1) "FINAL_PART" else "SENTENCE_$currentIndex"
+                tts.speak(sentences[currentIndex], TextToSpeech.QUEUE_ADD, null, utteranceId)
+                handler.postDelayed(this, 100)
             }
         }
+    }
 
-        override fun onError(utteranceId: String?) {
-            Log.e("TTS_DEBUG", "Erreur TTS pour utterance: $utteranceId")
-        }
-    })
+    handler.postDelayed(runnable, 500)
 }
 
 fun handleTtsButtonClick(
@@ -666,6 +667,25 @@ fun handleTtsButtonClick(
                 safeWidth,
                 safeHeight
             )
+
+//            Log.d("OCR_DEBUG", "=== ZONE OCR ===")
+//            Log.d("OCR_DEBUG", "Dimensions: ${cropped.width} x ${cropped.height}")
+//            Log.d("OCR_DEBUG", "Ratio: ${cropped.width.toFloat()/cropped.height}")
+//
+//            // SI LA ZONE EST PETITE (moins de 50-60 pixels de haut), ON L'AGRANDIT
+//            val finalBitmap = if (cropped.height < 100) {
+//                Log.d("OCR_HEIGHT", "Petite zone détectée (${cropped.height}px) - agrandissement 2x")
+//                // Agrandir l'image d'un facteur 2
+//                Bitmap.createScaledBitmap(
+//                    cropped,
+//                    cropped.width * 2,
+//                    cropped.height * 2,
+//                    true  // Filtre bilinéaire pour adoucir
+//                )
+//            } else {
+//                cropped
+//            }
+
 
             val image = InputImage.fromBitmap(cropped, 0)
 
