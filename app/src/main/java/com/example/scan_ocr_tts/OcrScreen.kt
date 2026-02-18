@@ -304,11 +304,13 @@ fun OcrScreen(
     var originalDisplayBitmap by remember { mutableStateOf<Bitmap?>(null) }
 
     var rectangles by remember { mutableStateOf<MutableList<android.graphics.Rect>>(mutableListOf()) }
+    var fullPageRect by remember { mutableStateOf<android.graphics.Rect?>(null) }
 
     var showTextScreen by remember { mutableStateOf(false) }
 
 
     var lastSpokenText by remember { mutableStateOf("") }
+    var all_selected by remember { mutableStateOf(false) }
     var no_squares by remember { mutableStateOf(false) }
     var showControls by rememberSaveable { mutableStateOf(false) }
     var showControls2 by rememberSaveable { mutableStateOf(false) }
@@ -497,16 +499,17 @@ fun OcrScreen(
             contrastBoost,
             preGrayAdjust,
             minWidthRatio,
-            skipDetection = no_squares
+            skipDetection = no_squares,
+            boostMode = contrastBoostMode
         )
         Log.d("PRE_GRAY_CALL", "Appel toAdaptiveThreshold avec preGrayAdjust = $preGrayAdjust")
 
-        val boostedBitmap = if (contrastBoostMode) {
-            ImageProcessing.strengthenText(processedBitmap)
-        } else {
-            processedBitmap
-        }
-
+//        val boostedBitmap = if (contrastBoostMode) {
+//            ImageProcessing.strengthenText(processedBitmap)
+//        } else {
+//            processedBitmap
+//        }
+        val boostedBitmap = processedBitmap
 
         rectangles = detectedRects.map {
             val pad = rectPadding.toInt()
@@ -517,6 +520,10 @@ fun OcrScreen(
                 it.y + it.height + pad
             )
         }.toMutableList()
+
+        // Créer un rectangle couvrant toute la page
+        fullPageRect = android.graphics.Rect(0, 0, originalBitmap.width, originalBitmap.height)
+
         selectedRectIndices = rectangles.indices.toSet()
 
         displayBitmap = boostedBitmap
@@ -612,20 +619,20 @@ fun OcrScreen(
 
 // Sortie du fichier JSON dans logcat
 
-                    IconButton(onClick = {
-                        val file = File(
-                            context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
-                            "bookmarks.json"
-                        )
-                        val content = if (file.exists()) file.readText() else "Fichier vide"
-                        Log.d("JSON_VIEWER", "Contenu JSON:\n$content")
-                    }) {
-                        Icon(
-                            imageVector = Icons.Default.Screenshot,
-                            contentDescription = "Log JSON",
-                            tint = Color.White
-                        )
-                    }
+//                    IconButton(onClick = {
+//                        val file = File(
+//                            context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
+//                            "bookmarks.json"
+//                        )
+//                        val content = if (file.exists()) file.readText() else "Fichier vide"
+//                        Log.d("JSON_VIEWER", "Contenu JSON:\n$content")
+//                    }) {
+//                        Icon(
+//                            imageVector = Icons.Default.Screenshot,
+//                            contentDescription = "Log JSON",
+//                            tint = Color.White
+//                        )
+//                    }
 
 // Rotation de l'écran
                     FlipScreenButton()
@@ -1435,6 +1442,32 @@ fun OcrScreen(
                             checkedColor = Color.Red,        // Case rouge quand cochée
                             uncheckedColor = Color.Red,      // Case rouge quand non cochée
                             checkmarkColor = Color.White     // Coche blanche pour le contraste
+                        )
+                    )
+
+                    Checkbox(
+                        checked = all_selected,
+                        onCheckedChange = { isChecked ->
+                            all_selected = isChecked
+                            if (isChecked) {
+                                // Effacer tous les rectangles existants et créer le rectangle pleine page
+                                rectangles.clear()
+                                fullPageRect?.let { rect ->
+                                    rectangles.add(rect)
+                                }
+                                selectedRectIndices = setOf(0)  // Sélectionner l'unique rectangle (pleine page)
+                            } else {
+                                // Réinitialiser : on laisse rectangles vide ou on restaure ?
+                                // Pour l'instant, on garde vide
+                                rectangles.clear()
+                                selectedRectIndices = emptySet()
+                            }
+                            OCR_lu = false
+                        },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Color.Green,
+                            uncheckedColor = Color.Green,
+                            checkmarkColor = Color.White
                         )
                     )
 

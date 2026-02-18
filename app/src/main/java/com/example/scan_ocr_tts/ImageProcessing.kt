@@ -62,7 +62,8 @@ object ImageProcessing {
         contrastBoost: Float,
         preGrayAdjust: Float = 0.0f,  // <-- NOUVEAU PARAMÈTRE ICI
         minWidthRatio: Float = 0.15f,
-        skipDetection: Boolean = false
+        skipDetection: Boolean = false,
+        boostMode: Boolean = false
     ): Pair<Bitmap, List<Rect>> {
 
         if (skipDetection) {
@@ -84,6 +85,25 @@ object ImageProcessing {
         val thresh = Mat()
 
         Utils.bitmapToMat(bitmap, src)
+
+// Application du renforcement de contraste en amont (mode boost)
+        if (boostMode) {
+            val boostFactor = 1.50f  // Correspond au facteur utilisé dans OcrScreen
+            val srcMat = Mat()
+            src.copyTo(srcMat)  // On copie pour ne pas modifier l'original
+
+            // Application du renforcement de contraste
+            srcMat.convertTo(srcMat, -1, boostFactor.toDouble(), 0.0)
+
+            // Remplacer src par srcMat pour la suite du traitement
+            srcMat.copyTo(src)
+            srcMat.release()
+
+            Log.d("BOOST_MODE", "Renforcement de contraste appliqué en amont")
+        }
+
+
+
 
     // 👇 AJOUTER ICI - Début de l'ajustement pré-gris
             if (preGrayAdjust != 0.0f) {
@@ -107,8 +127,8 @@ object ImageProcessing {
 
 
 // Taille du noyau adaptée au contraste choisi par l'utilisateur
-        val kernelSize = (13 * contrastBoost).coerceIn(9f, 17f)
-
+        // val kernelSize = (13 * contrastBoost).coerceIn(9f, 17f)
+        val kernelSize = (9 * contrastBoost).coerceIn(5f, 13f)
         val blackhatKernel = Imgproc.getStructuringElement(
             Imgproc.MORPH_RECT,
             Size(kernelSize.toDouble(), kernelSize.toDouble())
