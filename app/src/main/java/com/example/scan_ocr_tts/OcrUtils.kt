@@ -311,7 +311,10 @@ fun saveBookmarkToJson(
     preGrayAdjust: Float,
     preGrayTTSAdjust: Float,
     useHighRes: Boolean,
-    highResScaleFactor: Float
+    highResScaleFactor: Float,
+    customRectWidth: Float,   // ← AJOUTER ICI
+    customRectHeight: Float,
+    all_selected: Boolean
 ) {
     try {
         Log.d("BOOKMARK", "Sauvegarde JSON pour: $pdfPath page $pageIndex")
@@ -346,6 +349,7 @@ fun saveBookmarkToJson(
                     val minWidthRatio = "\"minWidthRatio\"\\s*:\\s*([\\d.]+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
                     val preGrayAdjust = "\"preGrayAdjust\"\\s*:\\s*([\\d.-]+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
                     val preGrayTTSAdjust = "\"preGrayTTSAdjust\"\\s*:\\s*([\\d.-]+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
+                    val allSelected = "\"all_selected\"\\s*:\\s*(true|false)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
                     Log.d("BOOKMARK_DEBUG", "preGrayTTSAdjust extrait: $preGrayTTSAdjust")
                     if (pdfPath != null) {
                         bookmarksList.add(mapOf(
@@ -357,7 +361,12 @@ fun saveBookmarkToJson(
                             "speechRate" to (speechRate?.toFloatOrNull() ?: 1f),
                             "minWidthRatio" to (minWidthRatio?.toFloatOrNull() ?: 0.15f),
                             "preGrayAdjust" to (preGrayAdjust?.toFloatOrNull() ?: 0.0f),
-                            "preGrayTTSAdjust" to (preGrayTTSAdjust?.toFloatOrNull() ?: 0.0f)
+                            "preGrayTTSAdjust" to (preGrayTTSAdjust?.toFloatOrNull() ?: 0.0f),
+                            "useHighRes" to useHighRes,
+                            "highResScaleFactor" to (highResScaleFactor ?: 1.3f),
+                            "customRectWidth" to (customRectWidth?: 100f),
+                            "customRectHeight" to (customRectHeight?: 100f),
+                            "all_selected" to (allSelected?.toBoolean() ?: false)
                         ))
                         Log.d("BOOKMARK", "Lu: $pdfPath")
                     }
@@ -386,7 +395,10 @@ fun saveBookmarkToJson(
             "preGrayAdjust" to preGrayAdjust,
             "preGrayTTSAdjust" to preGrayTTSAdjust,
             "useHighRes" to useHighRes,
-            "highResScaleFactor" to highResScaleFactor
+            "highResScaleFactor" to highResScaleFactor,
+            "customRectWidth" to customRectWidth,   // ← AJOUTER ICI
+            "customRectHeight" to customRectHeight,
+            "all_selected" to all_selected// ← AJOUTER ICI
         )
 
         if (existingIndex >= 0) {
@@ -414,6 +426,9 @@ fun saveBookmarkToJson(
             bookmarksJson.append("      \"preGrayAdjust\": ${bookmark["preGrayAdjust"]},\n")
             bookmarksJson.append("      \"preGrayTTSAdjust\": ${bookmark["preGrayTTSAdjust"]},\n")
             bookmarksJson.append("      \"useHighRes\": ${bookmark["useHighRes"]},\n")
+            bookmarksJson.append("      \"all_selected\": ${bookmark["all_selected"]},\n")
+            bookmarksJson.append("      \"customRectWidth\": ${bookmark["customRectWidth"]},\n")      // ← AJOUTER
+            bookmarksJson.append("      \"customRectHeight\": ${bookmark["customRectHeight"]},\n")    // ← AJOUTER
             bookmarksJson.append("      \"highResScaleFactor\": ${bookmark["highResScaleFactor"]}\n")
             bookmarksJson.append("    }")
             if (index < bookmarksList.size - 1) bookmarksJson.append(",")
@@ -470,18 +485,20 @@ fun getBookmarkFromJson(context: Context, targetPdfPath: String? = null): Map<St
 
         // Chercher la page de ce livre
         val escapedPath = Regex.escape(pdfPathToFind)
-        val bookmarkRegex = ("\"pdfPath\"\\s*:\\s*\"$escapedPath\"\\s*," +
-                "\\s*\"pageIndex\"\\s*:\\s*(\\d+)\\s*," +
-                "\\s*\"thresholdBias\"\\s*:\\s*([\\d.]+)\\s*," +
-                "\\s*\"rectPadding\"\\s*:\\s*([\\d.]+)\\s*," +
-                "\\s*\"contrastBoost\"\\s*:\\s*([\\d.]+)\\s*," +
-                "\\s*\"speechRate\"\\s*:\\s*([\\d.]+)\\s*," +
-                "\\s*\"minWidthRatio\"\\s*:\\s*([\\d.]+)\\s*," +
-                "\\s*\"preGrayAdjust\"\\s*:\\s*([\\d.-]+)\\s*," +  // ← AJOUTER \\s*,
-                "\\s*\"preGrayTTSAdjust\"\\s*:\\s*([\\d.Ee+-]+)\\s*," +  // ← Ajouter \\s*, à la fin
-                "\\s*\"useHighRes\"\\s*:\\s*(true|false|null)\\s*,?\\s*" +
-                "(?:\"highResScaleFactor\"\\s*:\\s*([\\d.]+)\\s*,?)?").toRegex()
-
+        val bookmarkRegex = ("\"pdfPath\"\\s*:\\s*\"$escapedPath\".*?" +
+                "\"pageIndex\"\\s*:\\s*(\\d+).*?" +
+                "\"thresholdBias\"\\s*:\\s*([\\d.]+).*?" +
+                "\"rectPadding\"\\s*:\\s*([\\d.]+).*?" +
+                "\"contrastBoost\"\\s*:\\s*([\\d.]+).*?" +
+                "\"speechRate\"\\s*:\\s*([\\d.]+).*?" +
+                "\"minWidthRatio\"\\s*:\\s*([\\d.]+).*?" +
+                "\"preGrayAdjust\"\\s*:\\s*([\\d.-]+).*?" +
+                "\"preGrayTTSAdjust\"\\s*:\\s*([\\d.Ee+-]+).*?" +
+                "\"useHighRes\"\\s*:\\s*(true|false).*?" +
+                "\"all_selected\"\\s*:\\s*(true|false).*?" +   // ← AJOUTER ICI
+                "\"customRectWidth\"\\s*:\\s*([\\d.]+).*?" +
+                "\"customRectHeight\"\\s*:\\s*([\\d.]+).*?" +
+                "\"highResScaleFactor\"\\s*:\\s*([\\d.]+)").toRegex(RegexOption.DOT_MATCHES_ALL)
 
         val bookmarkMatch = bookmarkRegex.find(jsonString)
         Log.d("BOOKMARK_REGEX", "bookmarkMatch trouvé: ${bookmarkMatch != null}")
@@ -499,9 +516,11 @@ fun getBookmarkFromJson(context: Context, targetPdfPath: String? = null): Map<St
                 "minWidthRatio" to (bookmarkMatch.groupValues.getOrNull(6) ?: "0.15"),
                 "preGrayAdjust" to (bookmarkMatch.groupValues.getOrNull(7) ?: "0.0"),
                 "preGrayTTSAdjust" to (bookmarkMatch.groupValues.getOrNull(8) ?: "0.0"),
-                "useHighRes" to (bookmarkMatch.groupValues.getOrNull(9) ?: "null"),
-                "highResScaleFactor" to (bookmarkMatch.groupValues.getOrNull(10) ?:
-                bookmarkMatch.groupValues.getOrNull(11) ?: "1.3")
+                "useHighRes" to (bookmarkMatch.groupValues.getOrNull(9) ?: "false"),
+                "all_selected" to (bookmarkMatch.groupValues.getOrNull(10) ?: "false"),   // ← NOUVEL INDEX 10
+                "customRectWidth" to (bookmarkMatch.groupValues.getOrNull(11) ?: "100.0"), // ← DÉCALÉ
+                "customRectHeight" to (bookmarkMatch.groupValues.getOrNull(12) ?: "100.0"), // ← DÉCALÉ
+                "highResScaleFactor" to (bookmarkMatch.groupValues.getOrNull(13) ?: "1.3") // ← DÉCALÉ
             )
         } else {
             mapOf("pdfPath" to pdfPathToFind, "pageIndex" to "0")

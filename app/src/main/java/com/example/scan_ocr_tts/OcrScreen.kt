@@ -237,7 +237,9 @@ fun OcrScreen(
 //    var pause_tts by remember { mutableStateOf(false) }
 
 
-
+    var all_selected by remember { mutableStateOf(false) }
+    var customRectWidth by rememberSaveable { mutableStateOf(100f) }
+    var customRectHeight by rememberSaveable { mutableStateOf(100f) }
 
     LaunchedEffect(pdfIdentity) {
         if (lastRestoredPdf != pdfIdentity) {
@@ -269,6 +271,9 @@ fun OcrScreen(
                 minWidthRatio = bookmarkData["minWidthRatio"]?.toFloatOrNull() ?: 0.15f
                 preGrayAdjust = bookmarkData["preGrayAdjust"]?.toFloatOrNull() ?: 0.0f
                 preGrayTTSAdjust = bookmarkData["preGrayTTSAdjust"]?.toFloatOrNull() ?: 0.0f
+                customRectWidth = bookmarkData["customRectWidth"]?.toFloatOrNull() ?: 100f
+                customRectHeight = bookmarkData["customRectHeight"]?.toFloatOrNull() ?: 100f
+                all_selected = bookmarkData["all_selected"]?.toBoolean() ?: false
                 bookmarkData["useHighRes"]?.toBooleanStrictOrNull()?.let { savedUseHighRes ->
                     if (savedUseHighRes != useHighRes) {
                         onUseHighResChange(savedUseHighRes)
@@ -310,7 +315,7 @@ fun OcrScreen(
 
 
     var lastSpokenText by remember { mutableStateOf("") }
-    var all_selected by remember { mutableStateOf(false) }
+
     var no_squares by remember { mutableStateOf(false) }
     var showControls by rememberSaveable { mutableStateOf(false) }
     var showControls2 by rememberSaveable { mutableStateOf(false) }
@@ -330,6 +335,22 @@ fun OcrScreen(
     // Fonction locale pour désélectionner les rectangles
     val handleRectanglesDeselection = {
         selectedRectIndices = emptySet()
+    }
+
+    // Fonction pour mettre à jour le rectangle personnalisé
+    fun updateCustomRect(bitmap: Bitmap?) {
+        if (all_selected && bitmap != null) {
+            val width = (bitmap.width * (customRectWidth / 100f)).toInt().coerceIn(10, bitmap.width)
+            val height = (bitmap.height * (customRectHeight / 100f)).toInt().coerceIn(10, bitmap.height)
+
+            // Centrer le rectangle
+            val left = (bitmap.width - width) / 2
+            val top = (bitmap.height - height) / 2
+
+            fullPageRect = android.graphics.Rect(left, top, left + width, top + height)
+            rectangles = mutableListOf(fullPageRect!!)
+            selectedRectIndices = setOf(0)
+        }
     }
 
     // Fonction locale pour inverser la selection les rectangles
@@ -470,7 +491,27 @@ fun OcrScreen(
         preGrayAdjust
     )
     {
-        OCR_lu = false
+        Log.d("RESET_CHECK", "Entrée dans LaunchedEffect - all_selected=$all_selected")
+
+        if (all_selected) {
+            Log.d("RESET_CHECK", "Mode all_selected activé - forçage réinitialisation")
+            lastSpokenText = ""
+            OCR_lu = false
+            Log.d("ALL_SELECTED", "Mode pleine page activé - détection automatique ignorée")
+            // On garde l'image originale mais sans rectangles détectés
+            originalDisplayBitmap = BitmapFactory.decodeFile(imageFile.absolutePath)
+            displayBitmap = originalDisplayBitmap
+
+            originalDisplayBitmap?.let { bmp ->
+                updateCustomRect(bmp)
+            }
+
+            // Ne pas exécuter le reste du traitement
+            return@LaunchedEffect
+        }
+
+//        OCR_lu = false
+//        lastSpokenText = ""
 
         Log.d("PDF_DEBUG", "OcrScreen reçoit imageFile = ${imageFile.absolutePath}")
 
@@ -553,7 +594,8 @@ fun OcrScreen(
             }
         }
 
-
+//        lastSpokenText = ""
+//        OCR_lu = false
     }
 
 
@@ -769,7 +811,10 @@ fun OcrScreen(
                                 preGrayAdjust = preGrayAdjust,
                                 preGrayTTSAdjust = String.format(Locale.US, "%.2f", preGrayTTSAdjust).toFloat(),
                                 useHighRes = useHighRes,
-                                highResScaleFactor = highResScaleFactor
+                                highResScaleFactor = highResScaleFactor,
+                                customRectWidth = customRectWidth,      // ← Remplacer 100f par customRectWidth
+                                customRectHeight = customRectHeight,    // ← Remplacer 100f par customRectHeight
+                                all_selected = all_selected             // ← Remplacer false par all_selected
                             )
 
                             onNext()  // ← RETOUR À L'ACCUEIL
@@ -1015,31 +1060,31 @@ fun OcrScreen(
                         }
 
                         // Pré-traitement gris pour le tts
-                        Text(
-                            text = "Gray preprocessing for TTS : ${"%.2f".format(preGrayTTSAdjust)}",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color(0xFFB71C1C))
-                                .padding(vertical = 2.dp, horizontal = 8.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        Slider(
-                            value = preGrayTTSAdjust,
-                            onValueChange = { preGrayTTSAdjust = it },
-                            valueRange = -1.0f..2.0f,
-                            steps = 20,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp)
-                                .height(24.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(16.dp))
+//                        Text(
+//                            text = "Gray preprocessing for TTS : ${"%.2f".format(preGrayTTSAdjust)}",
+//                            color = Color.White,
+//                            fontSize = 12.sp,
+//                            fontWeight = FontWeight.ExtraBold,
+//                            modifier = Modifier
+//                                .fillMaxWidth()
+//                                .background(Color(0xFFB71C1C))
+//                                .padding(vertical = 2.dp, horizontal = 8.dp)
+//                        )
+//
+//                        Spacer(modifier = Modifier.height(4.dp))
+//
+//                        Slider(
+//                            value = preGrayTTSAdjust,
+//                            onValueChange = { preGrayTTSAdjust = it },
+//                            valueRange = -1.0f..2.0f,
+//                            steps = 20,
+//                            modifier = Modifier
+//                                .fillMaxWidth()
+//                                .padding(horizontal = 16.dp)
+//                                .height(24.dp)
+//                        )
+//
+//                        Spacer(modifier = Modifier.height(16.dp))
 
                         // Marge des cadres
                         Text(
@@ -1092,6 +1137,70 @@ fun OcrScreen(
                                 .height(24.dp)
                         )
                     }
+
+// Curseurs pour le rectangle personnalisé (visible seulement si all_selected est coché)
+                    if (all_selected) {
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            text = "Largeur rectangle: ${customRectWidth.toInt()}%",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF9C27B0)) // Violet
+                                .padding(vertical = 2.dp, horizontal = 8.dp)
+                        )
+
+                        Slider(
+                            value = customRectHeight,
+                            onValueChange = { newValue ->
+                                customRectHeight = newValue
+                                originalDisplayBitmap?.let { bmp ->
+                                    updateCustomRect(bmp)
+                                }
+                            },
+                            valueRange = 10f..100f,
+                            steps = 35,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .height(24.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = "Hauteur rectangle: ${customRectHeight.toInt()}%",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF9C27B0)) // Violet
+                                .padding(vertical = 2.dp, horizontal = 8.dp)
+                        )
+
+                        Slider(
+                            value = customRectWidth,
+                            onValueChange = { newValue ->
+                                customRectWidth = newValue
+                                originalDisplayBitmap?.let { bmp ->
+                                    updateCustomRect(bmp)
+                                }
+                            },
+                            valueRange = 10f..100f,
+                            steps = 35,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .height(24.dp)
+                        )
+
+
+                    }
+
                 }
 
 
@@ -1338,6 +1447,7 @@ fun OcrScreen(
                                     pageAdvanceTriggered = false
                                     tts?.language = detectedTtsLocale ?: Locale.FRENCH
                                     tts?.setSpeechRate(speechRate)
+                                    Log.d("TTS_TEXT", "Texte qui va être lu: $lastSpokenText")
                                     speakLongText(tts, lastSpokenText, context)
                                     isSpeaking = true
                                 } else {
@@ -1353,8 +1463,10 @@ fun OcrScreen(
                                         detectedTtsLocale = detectedTtsLocale,
                                         onSpeechStateChange = { newState -> isSpeaking = newState },
                                         onLocaleDetected = { locale -> detectedTtsLocale = locale },
-                                        onPageAdvanceReset = { pageAdvanceTriggered = false },
-                                        onTextProcessed = { text -> lastSpokenText = text },
+                                        onPageAdvanceReset = { pageAdvanceTriggered = false },onTextProcessed = { text ->
+                                            lastSpokenText = text
+                                            Log.d("TTS_UPDATE", "Nouveau texte enregistré: ${text.take(50)}...")
+                                        },
                                         onSetOcrLu = { OCR_lu = true },
                                         preGrayTTSAdjust = preGrayTTSAdjust,
                                         onOcrEmptyWarning = { showOcrEmptyWarning = it }
@@ -1450,23 +1562,32 @@ fun OcrScreen(
                         onCheckedChange = { isChecked ->
                             all_selected = isChecked
                             if (isChecked) {
-                                // Effacer tous les rectangles existants et créer le rectangle pleine page
+                                // Effacer tous les rectangles existants
                                 rectangles.clear()
-                                fullPageRect?.let { rect ->
-                                    rectangles.add(rect)
+                                // Créer le rectangle personnalisé
+                                originalDisplayBitmap?.let { bmp ->
+                                    val width = (bmp.width * (customRectWidth / 100f)).toInt().coerceIn(10, bmp.width)
+                                    val height = (bmp.height * (customRectHeight / 100f)).toInt().coerceIn(10, bmp.height)
+
+                                    // Centrer le rectangle
+                                    val left = (bmp.width - width) / 2
+                                    val top = (bmp.height - height) / 2
+
+                                    fullPageRect = android.graphics.Rect(left, top, left + width, top + height)
+                                    rectangles.add(fullPageRect!!)
+                                    selectedRectIndices = setOf(0)
                                 }
-                                selectedRectIndices = setOf(0)  // Sélectionner l'unique rectangle (pleine page)
                             } else {
-                                // Réinitialiser : on laisse rectangles vide ou on restaure ?
-                                // Pour l'instant, on garde vide
+                                // Mode normal : on vide tout
                                 rectangles.clear()
                                 selectedRectIndices = emptySet()
+                                fullPageRect = null
                             }
                             OCR_lu = false
                         },
                         colors = CheckboxDefaults.colors(
-                            checkedColor = Color.Green,
-                            uncheckedColor = Color.Green,
+                            checkedColor = Color(0xFF006400),  // Vert foncé
+                            uncheckedColor = Color(0xFF006400),
                             checkmarkColor = Color.White
                         )
                     )
@@ -1575,6 +1696,5 @@ fun OcrScreen(
     }
 
 } // Fin de OcrScreen
-
 
 

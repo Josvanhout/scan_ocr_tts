@@ -105,15 +105,15 @@ object ImageProcessing {
 
 
 
-    // 👇 AJOUTER ICI - Début de l'ajustement pré-gris
-            if (preGrayAdjust != 0.0f) {
-                val contrast = 1.0f + kotlin.math.abs(preGrayAdjust)
-                val brightness = if (preGrayAdjust < 0) 30.0 * preGrayAdjust else -20.0 * preGrayAdjust
-                Log.d("PRE_GRAY_DEBUG", "Contraste: $contrast, Luminosité: $brightness")
-                src.convertTo(src, -1, contrast.toDouble(), brightness)
-                Log.d("PRE_GRAY_DEBUG", "Pixel après ajustement: ${src.get(0, 0)?.contentToString()}")
-            }
-    // 👆 FIN de l'ajustement pré-gris
+        // 👇 AJOUTER ICI - Début de l'ajustement pré-gris
+        if (preGrayAdjust != 0.0f) {
+            val contrast = 1.0f + kotlin.math.abs(preGrayAdjust)
+            val brightness = if (preGrayAdjust < 0) 30.0 * preGrayAdjust else -20.0 * preGrayAdjust
+            Log.d("PRE_GRAY_DEBUG", "Contraste: $contrast, Luminosité: $brightness")
+            src.convertTo(src, -1, contrast.toDouble(), brightness)
+            Log.d("PRE_GRAY_DEBUG", "Pixel après ajustement: ${src.get(0, 0)?.contentToString()}")
+        }
+        // 👆 FIN de l'ajustement pré-gris
 
 
 
