@@ -16,15 +16,32 @@ import android.R.attr.bitmap
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import android.net.Uri
@@ -32,8 +49,6 @@ import android.net.Uri
 import android.content.Context
 import android.util.Log
 import android.widget.Toast
-import androidx.compose.foundation.layout.padding
-import androidx.compose.runtime.LaunchedEffect
 
 import java.io.File
 import java.io.FileOutputStream
@@ -88,202 +103,182 @@ fun MainScreen(
 
 
      Column(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
+            .padding(16.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
 
          Text(
-             text = "Version: $versionName",
-             modifier = Modifier.padding(bottom = 32.dp), // 👈 Ajouter du padding en bas
-             style = androidx.compose.material3.MaterialTheme.typography.titleMedium, // 👈 Texte plus grand
-             color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
+             text = "Scan OCR TTS",
+             style = androidx.compose.material3.MaterialTheme.typography.displaySmall,
+             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+             color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+             modifier = Modifier.padding(bottom = 8.dp)
          )
 
-         Button(
-             onClick = {
-                 val fileName = "User_Manual.pdf"
-                 val file = File(context.cacheDir, fileName)
+         Text(
+             text = "Version: $versionName",
+             modifier = Modifier.padding(bottom = 32.dp),
+             style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+             color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+         )
 
-                 // Copie du fichier des assets vers le cache pour obtenir un Uri compatible
-                 context.assets.open(fileName).use { input ->
-                     FileOutputStream(file).use { output ->
-                         input.copyTo(output)
-                     }
+         androidx.compose.material3.Card(
+             modifier = Modifier.fillMaxWidth(0.9f),
+             shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+             colors = androidx.compose.material3.CardDefaults.cardColors(
+                 containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface
+             ),
+             elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 6.dp)
+         ) {
+             Column(
+                 modifier = Modifier
+                     .fillMaxWidth()
+                     .padding(24.dp),
+                 horizontalAlignment = Alignment.CenterHorizontally,
+                 verticalArrangement = Arrangement.spacedBy(16.dp)
+             ) {
+
+                 Button(
+                     onClick = {
+                         val fileName = "User_Manual.pdf"
+                         val file = File(context.cacheDir, fileName)
+
+                         // Copie du fichier des assets vers le cache pour obtenir un Uri compatible
+                         context.assets.open(fileName).use { input ->
+                             FileOutputStream(file).use { output ->
+                                 input.copyTo(output)
+                             }
+                         }
+
+                         val uri = androidx.core.content.FileProvider.getUriForFile(
+                             context,
+                             "${context.packageName}.provider",
+                             file
+                         )
+
+                         // On envoie l'Uri à votre fonction de sélection existante
+                         onPdfSelected(uri)
+                     },
+                     modifier = Modifier.fillMaxWidth().height(56.dp),
+                     shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                 ) {
+                     Icon(androidx.compose.material.icons.Icons.Default.MenuBook, contentDescription = null)
+                     Spacer(modifier = Modifier.width(12.dp))
+                     Text("User Manual", fontWeight = FontWeight.Bold)
                  }
 
-                 val uri = androidx.core.content.FileProvider.getUriForFile(
-                     context,
-                     "${context.packageName}.provider",
-                     file
+                 Button(
+                     onClick = {
+                         val fileName = "Manuel_d_utilisation.pdf"
+                         val file = File(context.cacheDir, fileName)
+
+                         // Copie du fichier des assets vers le cache pour obtenir un Uri compatible
+                         context.assets.open(fileName).use { input ->
+                             FileOutputStream(file).use { output ->
+                                 input.copyTo(output)
+                             }
+                         }
+
+                         val uri = androidx.core.content.FileProvider.getUriForFile(
+                             context,
+                             "${context.packageName}.provider",
+                             file
+                         )
+
+                         // On envoie l'Uri à votre fonction de sélection existante
+                         onPdfSelected(uri)
+                     },
+                     modifier = Modifier.fillMaxWidth().height(56.dp),
+                     shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                 ) {
+                     Icon(androidx.compose.material.icons.Icons.Default.MenuBook, contentDescription = null)
+                     Spacer(modifier = Modifier.width(12.dp))
+                     Text("Manuel d'utilisation", fontWeight = FontWeight.Bold)
+                 }
+
+                 androidx.compose.material3.HorizontalDivider(
+                     modifier = Modifier.padding(vertical = 8.dp),
+                     color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
                  )
 
-                 // On envoie l'Uri à votre fonction de sélection existante
-                 onPdfSelected(uri)
-             },
-             modifier = Modifier.fillMaxWidth(0.6f)
-         ) {
-             Text("User_Manual")
-         }
+                 var lastPdfPath by remember { mutableStateOf<String?>(null) }
 
-         Button(
-             onClick = {
-                 val fileName = "Manuel_d_utilisation.pdf"
-                 val file = File(context.cacheDir, fileName)
-
-                 // Copie du fichier des assets vers le cache pour obtenir un Uri compatible
-                 context.assets.open(fileName).use { input ->
-                     FileOutputStream(file).use { output ->
-                         input.copyTo(output)
+                 // Charger le dernier chemin depuis le JSON
+                 LaunchedEffect(Unit) {
+                     try {
+                         // Chercher le fichier bookmarks.json (comme dans votre OcrScreen)
+                         val jsonFile = File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "bookmarks.json")
+                         if (jsonFile.exists()) {
+                             val jsonString = jsonFile.readText()
+                             val jsonObject = org.json.JSONObject(jsonString)
+                             lastPdfPath = jsonObject.optString("dernierLivre", null)
+                         }
+                     } catch (e: Exception) {
+                         Log.e("MainScreen", "Erreur lecture JSON: ${e.message}")
                      }
                  }
 
-                 val uri = androidx.core.content.FileProvider.getUriForFile(
-                     context,
-                     "${context.packageName}.provider",
-                     file
-                 )
-
-                 // On envoie l'Uri à votre fonction de sélection existante
-                 onPdfSelected(uri)
-             },
-             modifier = Modifier.fillMaxWidth(0.6f)
-         ) {
-             Text("Manuel d'utilisation")
-         }
-
-
-//        Button(
-//            onClick = {
-//                Toast.makeText(
-//                    context,
-//                    "Scanner une page - Fonctionnalité à venir prochainement",
-//                    Toast.LENGTH_LONG
-//                ).show()
-//
-////                if (hasCameraPermission) {
-////                    onScanClick()
-////                } else {
-////                    permissionLauncher.launch(Manifest.permission.CAMERA)
-////                }
-//            }
-//
-//        ) {
-//            Text("Scanner une page")
-//        }
-
-
-//        Spacer(modifier = Modifier.height(16.dp))
-
-
-
-//        Button(
-//            onClick = {
-//
-//                Toast.makeText(
-//                    context,
-//                    "Importer une image- Fonctionnalité à venir prochainement",
-//                    Toast.LENGTH_LONG
-//                ).show()
-//
-//            //    onImportClick()
-//
-//
-//            }
-//        ) {
-//            Text("Importer une image")
-//        }
-//
-// Dans MainScreen.kt, remplacez la section avec le bouton "Open a PDF file" par ceci :
-
-         Spacer(modifier = Modifier.height(32.dp))
-
-// 👇 BOUTON "Open last pdf" simplifié
-         var lastPdfPath by remember { mutableStateOf<String?>(null) }
-
-// Charger le dernier chemin depuis le JSON
-         // Charger le dernier chemin depuis le JSON
-         LaunchedEffect(Unit) {
-             try {
-                 // Chercher le fichier bookmarks.json (comme dans votre OcrScreen)
-                 val jsonFile = File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "bookmarks.json")
-                 Log.d("MainScreen", "Chemin du fichier JSON: ${jsonFile.absolutePath}")
-                 Log.d("MainScreen", "Fichier existe? ${jsonFile.exists()}")
-
-                 if (jsonFile.exists()) {
-                     val jsonString = jsonFile.readText()
-                     Log.d("MainScreen", "Contenu JSON: $jsonString")
-
-                     val jsonObject = org.json.JSONObject(jsonString)
-                     lastPdfPath = jsonObject.optString("dernierLivre", null)
-
-                     Log.d("MainScreen", "dernierLivre trouvé: $lastPdfPath")
-                     Log.d("MainScreen", "lastPdfPath.isNullOrBlank? ${lastPdfPath.isNullOrBlank()}")
-
-                     if (!lastPdfPath.isNullOrBlank()) {
-                         Log.d("MainScreen", "Dernier livre: $lastPdfPath")
-                     }
+                 Button(
+                     onClick = {
+                         lastPdfPath?.let { path ->
+                             try {
+                                 val uri = Uri.parse(path)
+                                 onPdfSelected(uri)
+                             } catch (e: Exception) {
+                                 Toast.makeText(context, "Erreur avec le dernier PDF", Toast.LENGTH_SHORT).show()
+                             }
+                         } ?: run {
+                             Toast.makeText(context, "Aucun dernier PDF trouvé", Toast.LENGTH_SHORT).show()
+                         }
+                     },
+                     modifier = Modifier.fillMaxWidth().height(56.dp),
+                     shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                     enabled = !lastPdfPath.isNullOrBlank()
+                 ) {
+                     Icon(androidx.compose.material.icons.Icons.Default.Book, contentDescription = null)
+                     Spacer(modifier = Modifier.width(12.dp))
+                     Text("Open last pdf", fontWeight = FontWeight.Bold)
                  }
-             } catch (e: Exception) {
-                 Log.e("MainScreen", "Erreur lecture JSON: ${e.message}")
+
+                 Button(
+                     onClick = {
+                         pdfPickerLauncher.launch(arrayOf("application/pdf"))
+                     },
+                     modifier = Modifier.fillMaxWidth().height(56.dp),
+                     shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                     colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                         containerColor = androidx.compose.ui.graphics.Color(0xFF2E7D32) // Material dark green
+                     )
+                 ) {
+                     Icon(androidx.compose.material.icons.Icons.Default.FolderOpen, contentDescription = null)
+                     Spacer(modifier = Modifier.width(12.dp))
+                     Text("Open a PDF file", fontWeight = FontWeight.Bold)
+                 }
              }
          }
 
-         Button(
-             onClick = {
-                 lastPdfPath?.let { path ->
-                     try {
-                         val uri = Uri.parse(path)
-                         onPdfSelected(uri)
-                     } catch (e: Exception) {
-                         Toast.makeText(context, "Erreur avec le dernier PDF", Toast.LENGTH_SHORT).show()
-                     }
-                 } ?: run {
-                     Toast.makeText(context, "Aucun dernier PDF trouvé", Toast.LENGTH_SHORT).show()
-                 }
-             },
-             modifier = Modifier.fillMaxWidth(0.6f),
-             enabled = !lastPdfPath.isNullOrBlank()
-         ) {
-             Text("Open last pdf")
-         }
+         Spacer(modifier = Modifier.height(32.dp))
 
-//         Spacer(modifier = Modifier.height(16.dp))
-//
-//         Button(
-//             onClick = {
-//                 pdfPickerLauncher.launch(arrayOf("application/pdf"))
-//             }
-//         ) {
-//             Text("Open a PDF file")
-//         }
-
-
-
-
-
-       Spacer(modifier = Modifier.height(32.dp))
-
-        Button(
-            onClick = {
-                pdfPickerLauncher.launch(arrayOf("application/pdf"))
-            }
-        ) {
-            Text("Open a PDF file")
-        }
-
-         Spacer(modifier = Modifier.height(16.dp))
-
-         Button(
+         androidx.compose.material3.TextButton(
              onClick = { (context as? android.app.Activity)?.finish() },
-             modifier = Modifier.fillMaxWidth(0.4f),
-             colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                 containerColor = androidx.compose.ui.graphics.Color(0xFFB00020)
-             )
+             modifier = Modifier.fillMaxWidth(0.4f)
          ) {
-             Text("Exit")
+             Icon(
+                 androidx.compose.material.icons.Icons.Default.ExitToApp,
+                 contentDescription = null,
+                 tint = androidx.compose.ui.graphics.Color(0xFFEF4444)
+             )
+             Spacer(modifier = Modifier.width(8.dp))
+             Text(
+                 "Exit",
+                 color = androidx.compose.ui.graphics.Color(0xFFEF4444),
+                 fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+             )
          }
-
 
     }
 
