@@ -17,6 +17,7 @@ import android.os.Environment
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import androidx.activity.ComponentActivity
+import kotlinx.coroutines.withContext
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -139,7 +140,9 @@ fun OcrScreen(
     currentPageIndex: Int = 0,
     totalPages: Int = 1,
     useHighRes: Boolean,  
-    onUseHighResChange: (Boolean) -> Unit  
+    onUseHighResChange: (Boolean) -> Unit,
+    isDoublePageMode: Boolean = false,
+    onDoublePageModeChange: ((Boolean) -> Unit)? = null
 
 ) {
 
@@ -150,27 +153,28 @@ fun OcrScreen(
     val context = LocalContext.current
 
     LaunchedEffect(Unit) {
+        withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val dummyBitmap = android.graphics.Bitmap.createBitmap(
+                    100, 100, android.graphics.Bitmap.Config.ARGB_8888
+                )
+                dummyBitmap.eraseColor(android.graphics.Color.WHITE)
 
-        try {
-            val dummyBitmap = android.graphics.Bitmap.createBitmap(
-                100, 100, android.graphics.Bitmap.Config.ARGB_8888
-            )
-            dummyBitmap.eraseColor(android.graphics.Color.WHITE)
+                val dummyImage = com.google.mlkit.vision.common.InputImage.fromBitmap(dummyBitmap, 0)
+                val recognizer = com.google.mlkit.vision.text.TextRecognition.getClient(
+                    com.google.mlkit.vision.text.latin.TextRecognizerOptions.DEFAULT_OPTIONS
+                )
 
-            val dummyImage = com.google.mlkit.vision.common.InputImage.fromBitmap(dummyBitmap, 0)
-            val recognizer = com.google.mlkit.vision.text.TextRecognition.getClient(
-                com.google.mlkit.vision.text.latin.TextRecognizerOptions.DEFAULT_OPTIONS
-            )
-
-            recognizer.process(dummyImage)
-                .addOnSuccessListener {
-                    
-                }
-                .addOnFailureListener { e ->
-                    
-                }
-        } catch (e: Exception) {
-            
+                recognizer.process(dummyImage)
+                    .addOnSuccessListener {
+                        
+                    }
+                    .addOnFailureListener { e ->
+                        
+                    }
+            } catch (e: Exception) {
+                
+            }
         }
     }
 
@@ -198,6 +202,9 @@ fun OcrScreen(
     val initialPreGrayAdjust = prefs.getFloat("preGrayAdjust", 0.0f)
     var preGrayAdjust by rememberSaveable { mutableStateOf(initialPreGrayAdjust) }
     var preGrayTTSAdjust by rememberSaveable { mutableStateOf(initialPreGrayAdjust) }
+
+    val initialPauseDuration = prefs.getFloat("pauseDuration", 100f)
+    var pauseDuration by rememberSaveable { mutableStateOf(initialPauseDuration) }
 
     var ttsAlreadyFinished by remember { mutableStateOf(false) }
     var pageAdvanceTriggered by remember { mutableStateOf(false) }
@@ -240,6 +247,7 @@ fun OcrScreen(
                 minWidthRatio = bookmarkData["minWidthRatio"]?.toFloatOrNull() ?: 0.15f
                 preGrayAdjust = bookmarkData["preGrayAdjust"]?.toFloatOrNull() ?: 0.0f
                 preGrayTTSAdjust = bookmarkData["preGrayTTSAdjust"]?.toFloatOrNull() ?: 0.0f
+                pauseDuration = bookmarkData["pauseDuration"]?.toFloatOrNull() ?: initialPauseDuration
                 customRectWidth = bookmarkData["customRectWidth"]?.toFloatOrNull() ?: 100f
                 customRectHeight = bookmarkData["customRectHeight"]?.toFloatOrNull() ?: 100f
                 all_selected = bookmarkData["all_selected"]?.toBoolean() ?: false
@@ -393,13 +401,15 @@ fun OcrScreen(
                                                 speechRate = speechRate,
                                                 detectedTtsLocale = detectedTtsLocale,
                                                 preGrayTTSAdjust = preGrayTTSAdjust,
+                                                pauseDuration = pauseDuration.toLong(),
                                                 onSpeechStateChange = { newState -> isSpeaking = newState },
                                                 onLocaleDetected = { locale -> detectedTtsLocale = locale },
                                                 onPageAdvanceReset = { pageAdvanceTriggered = false },
                                                 onTextProcessed = { text -> lastSpokenText = text },
                                                 onSetOcrLu = { OCR_lu = true },
                                                 onOcrEmptyWarning = { showOcrEmptyWarning = it },
-                                                context = context
+                                                context = context,
+                                                isDoublePageMode = isDoublePageMode
                                             )
                                         }, 1000)
                                     }
@@ -435,7 +445,8 @@ fun OcrScreen(
         contrastBoost,
         contrastBoostMode,
         minWidthRatio,
-        preGrayAdjust
+        preGrayAdjust,
+        isDoublePageMode
     )
     {
 
@@ -444,71 +455,86 @@ fun OcrScreen(
             lastSpokenText = ""
             OCR_lu = false
 
-            originalDisplayBitmap = BitmapFactory.decodeFile(imageFile.absolutePath)
-            displayBitmap = originalDisplayBitmap
+            withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val originalBitmap = BitmapFactory.decodeFile(imageFile.absolutePath)
+                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    originalDisplayBitmap = originalBitmap
+                    displayBitmap = originalDisplayBitmap
 
-            originalDisplayBitmap?.let { bmp ->
-                updateCustomRect(bmp)
+                    originalDisplayBitmap?.let { bmp ->
+                        updateCustomRect(bmp)
+                    }
+                }
             }
 
             return@LaunchedEffect
         }
 
-        val bitmap = BitmapFactory.decodeFile(imageFile.absolutePath)
+        withContext(kotlinx.coroutines.Dispatchers.IO) {
+            lastSpokenText = ""
+            OCR_lu = false
+            
+            val bitmap = BitmapFactory.decodeFile(imageFile.absolutePath)
 
-        val safeBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-        val originalBitmap = BitmapFactory.decodeFile(imageFile.absolutePath)
-        originalDisplayBitmap = originalBitmap
+            val safeBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+            val originalBitmap = BitmapFactory.decodeFile(imageFile.absolutePath)
 
-        val effectiveContrast = contrastBoost * (if (contrastBoostMode) 1.35f else 1.0f)
-        Log.d(
-            "BOOST_DEBUG",
-            "contrastBoost=$contrastBoost  boostMode=$contrastBoostMode  effective=$effectiveContrast"
-        )
-
-        val contrastBitmap = ImageProcessing.adjustContrast(originalBitmap, effectiveContrast)
-
-        val (processedBitmap, detectedRects) = ImageProcessing.toAdaptiveThreshold(
-            contrastBitmap,
-            thresholdBias,
-            contrastBoost,
-            preGrayAdjust,
-            minWidthRatio,
-            skipDetection = no_squares,
-            boostMode = contrastBoostMode
-        )
-
-        val boostedBitmap = processedBitmap
-
-        rectangles = detectedRects.map {
-            val pad = rectPadding.toInt()
-            android.graphics.Rect(
-                it.x - pad,
-                it.y - pad,
-                it.x + it.width + pad,
-                it.y + it.height + pad
+            val effectiveContrast = contrastBoost * (if (contrastBoostMode) 1.35f else 1.0f)
+            Log.d(
+                "BOOST_DEBUG",
+                "contrastBoost=$contrastBoost  boostMode=$contrastBoostMode  effective=$effectiveContrast"
             )
-        }.toMutableList()
 
-        fullPageRect = android.graphics.Rect(0, 0, originalBitmap.width, originalBitmap.height)
+            val contrastBitmap = ImageProcessing.adjustContrast(originalBitmap, effectiveContrast)
 
-        selectedRectIndices = rectangles.indices.toSet()
+            val (processedBitmap, detectedRects) = ImageProcessing.toAdaptiveThreshold(
+                contrastBitmap,
+                thresholdBias,
+                contrastBoost,
+                preGrayAdjust,
+                minWidthRatio,
+                skipDetection = no_squares,
+                boostMode = contrastBoostMode
+            )
 
-        displayBitmap = boostedBitmap
+            val boostedBitmap = processedBitmap
 
-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            val newRectangles = detectedRects.map {
+                val pad = rectPadding.toInt()
+                android.graphics.Rect(
+                    it.x - pad,
+                    it.y - pad,
+                    it.x + it.width + pad,
+                    it.y + it.height + pad
+                )
+            }.toMutableList()
 
-        val image = InputImage.fromBitmap(processedBitmap, 0)
+            val newFullPageRect = android.graphics.Rect(0, 0, originalBitmap.width, originalBitmap.height)
+            val newSelectedRectIndices = newRectangles.indices.toSet()
 
-        OcrProcessor.processImageWithMlKit(processedBitmap, 0) { ocrResult ->
-            if (ocrResult.success) {
+            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                originalDisplayBitmap = originalBitmap
+                rectangles = newRectangles
+                fullPageRect = newFullPageRect
+                selectedRectIndices = newSelectedRectIndices
+                displayBitmap = boostedBitmap
+            }
 
-                textBlocks = ocrResult.blocks
-                recognizedText = "Sélectionne les zones à garder, puis appuie sur le bouton."
+            val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
-            } else {
-                
-                recognizedText = "Erreur lors de la reconnaissance."
+            val image = InputImage.fromBitmap(processedBitmap, 0)
+
+            val ocrRotation = if (isDoublePageMode) 90 else 0
+            OcrProcessor.processImageWithMlKit(processedBitmap, ocrRotation) { ocrResult ->
+                if (ocrResult.success) {
+
+                    textBlocks = ocrResult.blocks
+                    recognizedText = "Sélectionne les zones à garder, puis appuie sur le bouton."
+
+                } else {
+                    
+                    recognizedText = "Erreur lors de la reconnaissance."
+                }
             }
         }
 
@@ -616,6 +642,7 @@ fun OcrScreen(
                                 .putFloat("speechRate", speechRate)
                                 .putFloat("minWidthRatio", minWidthRatio)
                                 .putFloat("preGrayAdjust", preGrayAdjust)
+                                .putFloat("pauseDuration", pauseDuration)
                                 .putString("lastPdfPath", currentPdfPath)
                                 .putInt("lastPdfPage", currentPageIndex)
                                 .apply()
@@ -631,6 +658,7 @@ fun OcrScreen(
                                 minWidthRatio = minWidthRatio,
                                 preGrayAdjust = preGrayAdjust,
                                 preGrayTTSAdjust = String.format(Locale.US, "%.2f", preGrayTTSAdjust).toFloat(),
+                                pauseDuration = pauseDuration.toLong(),
                                 useHighRes = useHighRes,
                                 highResScaleFactor = highResScaleFactor,
                                 customRectWidth = customRectWidth,      
@@ -911,6 +939,32 @@ fun OcrScreen(
                                 .padding(horizontal = 16.dp)
                                 .height(24.dp)
                         )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            text = "Pause between sentences : ${pauseDuration.toInt()} ms",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF2E7D32))
+                                .padding(vertical = 2.dp, horizontal = 8.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Slider(
+                            value = pauseDuration,
+                            onValueChange = { pauseDuration = it },
+                            valueRange = 100f..2000f,
+                            steps = 189,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .height(24.dp)
+                        )
                     }
 
                     if (all_selected) {
@@ -1088,12 +1142,23 @@ fun OcrScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp)
+                        .padding(horizontal = 8.dp) 
                         .navigationBarsPadding()
                         .padding(bottom = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    horizontalArrangement = Arrangement.SpaceBetween, 
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+
+                    Checkbox(
+                        checked = isDoublePageMode,
+                        onCheckedChange = { onDoublePageModeChange?.invoke(it) },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Color.White,
+                            uncheckedColor = Color.White,
+                            checkmarkColor = Color.Black
+                        ),
+                        modifier = Modifier.padding(start = 0.dp) 
+                    )
 
                     Button(
                         onClick = { onPreviousPage?.invoke() },
@@ -1115,7 +1180,7 @@ fun OcrScreen(
                                     tts?.language = detectedTtsLocale ?: Locale.FRENCH
                                     tts?.setSpeechRate(speechRate)
                                     
-                                    speakLongText(tts, lastSpokenText, context)
+                                    speakLongText(tts, lastSpokenText, context, pauseDuration = pauseDuration.toLong())
                                     isSpeaking = true
                                 } else {
 
@@ -1135,7 +1200,9 @@ fun OcrScreen(
                                         },
                                         onSetOcrLu = { OCR_lu = true },
                                         preGrayTTSAdjust = preGrayTTSAdjust,
-                                        onOcrEmptyWarning = { showOcrEmptyWarning = it }
+                                        pauseDuration = pauseDuration.toLong(),
+                                        onOcrEmptyWarning = { showOcrEmptyWarning = it },
+                                        isDoublePageMode = isDoublePageMode
                                     )
                                 }
                             }
@@ -1170,7 +1237,7 @@ fun OcrScreen(
                                         pageAdvanceTriggered = false
                                         tts?.language = detectedTtsLocale ?: Locale.FRENCH
                                         tts?.setSpeechRate(speechRate)
-                                        speakLongText(tts, lastSpokenText, context)
+                                        speakLongText(tts, lastSpokenText, context, pauseDuration = pauseDuration.toLong())
                                         isSpeaking = true
                                     } else {
 
@@ -1188,7 +1255,9 @@ fun OcrScreen(
                                             onTextProcessed = { text -> lastSpokenText = text },
                                             onSetOcrLu = { OCR_lu = true },
                                             preGrayTTSAdjust = preGrayTTSAdjust,
-                                            onOcrEmptyWarning = { showOcrEmptyWarning = it }
+                                            pauseDuration = pauseDuration.toLong(),
+                                            onOcrEmptyWarning = { showOcrEmptyWarning = it },
+                                            isDoublePageMode = isDoublePageMode
                                         )
                                     }
                                 }
@@ -1283,7 +1352,7 @@ fun OcrScreen(
                     Button(onClick = {
                         if (recognizedText.isNotBlank()) {
                             lastSpokenText = recognizedText
-                            speakLongText(tts, recognizedText)
+                            speakLongText(tts, recognizedText, pauseDuration = pauseDuration.toLong())
                             isSpeaking = true
                         }
                     }) {

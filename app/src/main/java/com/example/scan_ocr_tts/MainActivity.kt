@@ -25,7 +25,6 @@ import java.io.File
 import org.opencv.android.OpenCVLoader
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalContext
 
 
 import androidx.activity.compose.setContent
@@ -52,13 +51,14 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    var currentScreen by remember { mutableStateOf("main") }
+                    var currentScreen by rememberSaveable { mutableStateOf("main") }
+                    
                     LaunchedEffect(currentScreen) {
                         android.util.Log.d("NAV_DEBUG", "Changement d'écran -> $currentScreen")
                     }
-                    var capturedImageFile by remember { mutableStateOf<File?>(null) }
-                    var selectedPdfUri by remember { mutableStateOf<Uri?>(null) }
-                    var pdfPageIndex by remember { mutableStateOf(0) }
+                    var capturedImageFile by rememberSaveable { mutableStateOf<File?>(null) }
+                    var selectedPdfUri by rememberSaveable { mutableStateOf<Uri?>(null) }
+                    var pdfPageIndex by rememberSaveable { mutableStateOf(0) }
 
                     val prefs = applicationContext.getSharedPreferences("ocr_settings", MODE_PRIVATE)
 
@@ -163,6 +163,8 @@ class MainActivity : ComponentActivity() {
 
 
                     }
+
+
 
 
 

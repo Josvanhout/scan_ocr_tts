@@ -156,7 +156,7 @@ object OcrProcessor {
                 return
             }
 
-            val croppedBitmap = Bitmap.createBitmap(
+            var croppedBitmap = Bitmap.createBitmap(
                 bitmap,
                 safeLeft,
                 safeTop,
@@ -164,11 +164,22 @@ object OcrProcessor {
                 safeHeight
             )
 
-            // Utiliser ML Kit pour l'extraction
-            val inputImage = InputImage.fromBitmap(croppedBitmap, rotation)
+            // REDRESSEMENT PHYSIQUE : On pivote le bloc de -rotation (ex: -90°) pour le remettre droit
+            if (rotation != 0) {
+                val matrix = android.graphics.Matrix().apply { postRotate(-rotation.toFloat()) }
+                val rotated = Bitmap.createBitmap(croppedBitmap, 0, 0, croppedBitmap.width, croppedBitmap.height, matrix, true)
+                if (rotated != croppedBitmap) {
+                    croppedBitmap.recycle()
+                    croppedBitmap = rotated
+                }
+            }
+
+            // Utiliser ML Kit sur l'image redressée (rotation 0)
+            val inputImage = InputImage.fromBitmap(croppedBitmap, 0)
 
             recognizer?.process(inputImage)
                 ?.addOnSuccessListener { visionText ->
+                    // Plus besoin de tri complexe, l'image physique est droite
                     onResult(visionText.text)
                 }
                 ?.addOnFailureListener { e ->

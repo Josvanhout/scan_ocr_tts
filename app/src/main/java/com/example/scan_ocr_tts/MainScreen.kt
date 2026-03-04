@@ -4,6 +4,7 @@ package com.example.scan_ocr_tts
 
 import android.os.Environment
 import androidx.compose.foundation.layout.Arrangement
+import com.example.scan_ocr_tts.R
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Button
@@ -18,6 +19,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.paint
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -29,8 +33,10 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.TextButton
@@ -49,6 +55,8 @@ import android.net.Uri
 import android.content.Context
 import android.util.Log
 import android.widget.Toast
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.unit.sp
 
 import java.io.File
 import java.io.FileOutputStream
@@ -101,11 +109,96 @@ fun MainScreen(
          }
      )
 
+     var urisToDelete by remember { mutableStateOf<List<Uri>?>(null) }
+
+     val deletePdfLauncher = rememberLauncherForActivityResult(
+         contract = ActivityResultContracts.OpenMultipleDocuments(),
+         onResult = { uris ->
+             if (uris.isEmpty()) return@rememberLauncherForActivityResult
+             urisToDelete = uris
+         }
+     )
+
+     if (urisToDelete != null) {
+         AlertDialog(
+             onDismissRequest = { urisToDelete = null },
+             title = { Text("Confirmer la suppression") },
+             text = { Text("Voulez-vous vraiment supprimer ces ${urisToDelete?.size ?: 0} fichier(s) ? Cette action est définitive.") },
+             confirmButton = {
+                 androidx.compose.material3.TextButton(
+                     onClick = {
+                         val uris = urisToDelete ?: return@TextButton
+                         var deletedCount = 0
+                         val pathsToRemove = mutableListOf<String>()
+                         
+                         uris.forEach { uri ->
+                             try {
+                                 val path = uri.toString()
+                                 pathsToRemove.add(path)
+                                 val deleted = android.provider.DocumentsContract.deleteDocument(context.contentResolver, uri)
+                                 if (deleted) deletedCount++
+                             } catch (e: Exception) {
+                                 Log.e("MainScreen", "Erreur suppression $uri: ${e.message}")
+                             }
+                         }
+
+                         // Nettoyage du fichier bookmarks.json
+                         if (pathsToRemove.isNotEmpty()) {
+                             try {
+                                 val jsonFile = File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "bookmarks.json")
+                                 if (jsonFile.exists()) {
+                                     val jsonString = jsonFile.readText()
+                                     val jsonObject = org.json.JSONObject(jsonString)
+                                     val jsonArray = jsonObject.optJSONArray("bookmarks")
+                                     if (jsonArray != null) {
+                                         val newArray = org.json.JSONArray()
+                                         for (i in 0 until jsonArray.length()) {
+                                             val b = jsonArray.getJSONObject(i)
+                                             if (!pathsToRemove.contains(b.getString("pdfPath"))) {
+                                                 newArray.put(b)
+                                             }
+                                         }
+                                         jsonObject.put("bookmarks", newArray)
+                                         
+                                         if (pathsToRemove.contains(jsonObject.optString("dernierLivre"))) {
+                                             jsonObject.put("dernierLivre", "")
+                                         }
+                                         
+                                         jsonFile.writeText(jsonObject.toString())
+                                     }
+                                 }
+                             } catch (e: Exception) {
+                                 Log.e("MainScreen", "Erreur MAJ bookmarks: ${e.message}")
+                             }
+                         }
+
+                         if (deletedCount > 0) {
+                             Toast.makeText(context, "$deletedCount fichier(s) supprimé(s)", Toast.LENGTH_SHORT).show()
+                         } else {
+                             Toast.makeText(context, "Impossible de supprimer ces fichiers", Toast.LENGTH_SHORT).show()
+                         }
+                         urisToDelete = null
+                     }
+                 ) {
+                     Text("Supprimer", color = androidx.compose.ui.graphics.Color.Red, fontWeight = FontWeight.Bold)
+                 }
+             },
+             dismissButton = {
+                 androidx.compose.material3.TextButton(onClick = { urisToDelete = null }) {
+                     Text("Annuler")
+                 }
+             }
+         )
+     }
+
 
      Column(
         modifier = modifier
             .fillMaxSize()
-            .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
+            .paint(
+                painter = painterResource(id = R.drawable.bg_main_gradient),
+                contentScale = ContentScale.Crop
+            )
             .padding(16.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
@@ -115,7 +208,7 @@ fun MainScreen(
              text = "Scan OCR TTS",
              style = androidx.compose.material3.MaterialTheme.typography.displaySmall,
              fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-             color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+             color = androidx.compose.ui.graphics.Color(0xFF90CAF9),
              modifier = Modifier.padding(bottom = 8.dp)
          )
 
@@ -222,27 +315,30 @@ fun MainScreen(
                      }
                  }
 
-                 Button(
-                     onClick = {
-                         lastPdfPath?.let { path ->
-                             try {
-                                 val uri = Uri.parse(path)
-                                 onPdfSelected(uri)
-                             } catch (e: Exception) {
-                                 Toast.makeText(context, "Erreur avec le dernier PDF", Toast.LENGTH_SHORT).show()
+                     Button(
+                         onClick = {
+                             lastPdfPath?.let { path ->
+                                 try {
+                                     val uri = Uri.parse(path)
+                                     onPdfSelected(uri)
+                                 } catch (e: Exception) {
+                                     Toast.makeText(context, "Erreur avec le dernier PDF", Toast.LENGTH_SHORT).show()
+                                 }
+                             } ?: run {
+                                 Toast.makeText(context, "Aucun dernier PDF trouvé", Toast.LENGTH_SHORT).show()
                              }
-                         } ?: run {
-                             Toast.makeText(context, "Aucun dernier PDF trouvé", Toast.LENGTH_SHORT).show()
-                         }
-                     },
-                     modifier = Modifier.fillMaxWidth().height(56.dp),
-                     shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                     enabled = !lastPdfPath.isNullOrBlank()
-                 ) {
-                     Icon(androidx.compose.material.icons.Icons.Default.Book, contentDescription = null)
-                     Spacer(modifier = Modifier.width(12.dp))
-                     Text("Open last pdf", fontWeight = FontWeight.Bold)
-                 }
+                         },
+                         modifier = Modifier.fillMaxWidth().height(56.dp),
+                         shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                         enabled = !lastPdfPath.isNullOrBlank(),
+                         colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                             containerColor = androidx.compose.ui.graphics.Color(0xFF1976D2) // Blue 700
+                         )
+                     ) {
+                         Icon(androidx.compose.material.icons.Icons.Default.Book, contentDescription = null)
+                         Spacer(modifier = Modifier.width(12.dp))
+                         Text("Open last pdf", fontWeight = FontWeight.Bold, color = androidx.compose.ui.graphics.Color.White)
+                     }
 
                  Button(
                      onClick = {
@@ -258,6 +354,21 @@ fun MainScreen(
                      Spacer(modifier = Modifier.width(12.dp))
                      Text("Open a PDF file", fontWeight = FontWeight.Bold)
                  }
+
+                 Button(
+                     onClick = {
+                         deletePdfLauncher.launch(arrayOf("application/pdf"))
+                     },
+                     modifier = Modifier.fillMaxWidth().height(56.dp),
+                     shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                     colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                         containerColor = androidx.compose.ui.graphics.Color(0xFFEF4444) // Red
+                     )
+                 ) {
+                     Icon(Icons.Default.Delete, contentDescription = null)
+                     Spacer(modifier = Modifier.width(12.dp))
+                     Text("Delete PDF files", fontWeight = FontWeight.Bold)
+                 }
              }
          }
 
@@ -265,16 +376,18 @@ fun MainScreen(
 
          androidx.compose.material3.TextButton(
              onClick = { (context as? android.app.Activity)?.finish() },
-             modifier = Modifier.fillMaxWidth(0.4f)
+             modifier = Modifier.fillMaxWidth(0.5f).padding(8.dp)
          ) {
              Icon(
                  androidx.compose.material.icons.Icons.Default.ExitToApp,
                  contentDescription = null,
+                 modifier = Modifier.size(32.dp),
                  tint = androidx.compose.ui.graphics.Color(0xFFEF4444)
              )
              Spacer(modifier = Modifier.width(8.dp))
              Text(
                  "Exit",
+                 fontSize = 20.sp,
                  color = androidx.compose.ui.graphics.Color(0xFFEF4444),
                  fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
              )

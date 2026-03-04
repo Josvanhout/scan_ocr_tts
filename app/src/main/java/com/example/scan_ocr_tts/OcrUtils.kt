@@ -17,9 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.exifinterface.media.ExifInterface
@@ -247,7 +245,8 @@ fun saveBookmarkToJson(
     highResScaleFactor: Float,
     customRectWidth: Float,   
     customRectHeight: Float,
-    all_selected: Boolean
+    all_selected: Boolean,
+    pauseDuration: Long
 ) {
     try {
 
@@ -277,6 +276,7 @@ fun saveBookmarkToJson(
                     val preGrayAdjust = "\"preGrayAdjust\"\\s*:\\s*([\\d.-]+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
                     val preGrayTTSAdjust = "\"preGrayTTSAdjust\"\\s*:\\s*([\\d.-]+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
                     val allSelected = "\"all_selected\"\\s*:\\s*(true|false)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
+                    val pauseDurationStr = "\"pauseDuration\"\\s*:\\s*(\\d+)".toRegex().find(bookmarkStr)?.groupValues?.get(1)
                     
                     if (pdfPath != null) {
                         bookmarksList.add(mapOf(
@@ -293,7 +293,8 @@ fun saveBookmarkToJson(
                             "highResScaleFactor" to (highResScaleFactor ?: 1.3f),
                             "customRectWidth" to (customRectWidth?: 100f),
                             "customRectHeight" to (customRectHeight?: 100f),
-                            "all_selected" to (allSelected?.toBoolean() ?: false)
+                            "all_selected" to (allSelected?.toBoolean() ?: false),
+                            "pauseDuration" to (pauseDurationStr?.toLongOrNull() ?: 100L)
                         ))
                         
                     }
@@ -321,7 +322,8 @@ fun saveBookmarkToJson(
             "highResScaleFactor" to highResScaleFactor,
             "customRectWidth" to customRectWidth,   
             "customRectHeight" to customRectHeight,
-            "all_selected" to all_selected
+            "all_selected" to all_selected,
+            "pauseDuration" to pauseDuration
         )
 
         if (existingIndex >= 0) {
@@ -351,7 +353,8 @@ fun saveBookmarkToJson(
             bookmarksJson.append("      \"all_selected\": ${bookmark["all_selected"]},\n")
             bookmarksJson.append("      \"customRectWidth\": ${bookmark["customRectWidth"]},\n")      
             bookmarksJson.append("      \"customRectHeight\": ${bookmark["customRectHeight"]},\n")    
-            bookmarksJson.append("      \"highResScaleFactor\": ${bookmark["highResScaleFactor"]}\n")
+            bookmarksJson.append("      \"highResScaleFactor\": ${bookmark["highResScaleFactor"]},\n")
+            bookmarksJson.append("      \"pauseDuration\": ${bookmark["pauseDuration"]}\n")
             bookmarksJson.append("    }")
             if (index < bookmarksList.size - 1) bookmarksJson.append(",")
             bookmarksJson.append("\n")
@@ -406,7 +409,8 @@ fun getBookmarkFromJson(context: Context, targetPdfPath: String? = null): Map<St
                 "\"all_selected\"\\s*:\\s*(true|false).*?" +   
                 "\"customRectWidth\"\\s*:\\s*([\\d.]+).*?" +
                 "\"customRectHeight\"\\s*:\\s*([\\d.]+).*?" +
-                "\"highResScaleFactor\"\\s*:\\s*([\\d.]+)").toRegex(RegexOption.DOT_MATCHES_ALL)
+                "\"highResScaleFactor\"\\s*:\\s*([\\d.]+)" +
+                "(?:.*?\"pauseDuration\"\\s*:\\s*(\\d+))?").toRegex(RegexOption.DOT_MATCHES_ALL)
 
         val bookmarkMatch = bookmarkRegex.find(jsonString)
 
@@ -426,7 +430,8 @@ fun getBookmarkFromJson(context: Context, targetPdfPath: String? = null): Map<St
                 "all_selected" to (bookmarkMatch.groupValues.getOrNull(10) ?: "false"),   
                 "customRectWidth" to (bookmarkMatch.groupValues.getOrNull(11) ?: "100.0"), 
                 "customRectHeight" to (bookmarkMatch.groupValues.getOrNull(12) ?: "100.0"), 
-                "highResScaleFactor" to (bookmarkMatch.groupValues.getOrNull(13) ?: "1.3") 
+                "highResScaleFactor" to (bookmarkMatch.groupValues.getOrNull(13) ?: "1.3"),
+                "pauseDuration" to (bookmarkMatch.groupValues.getOrNull(14)?.takeIf { it.isNotBlank() } ?: "100")
             )
         } else {
             mapOf("pdfPath" to pdfPathToFind, "pageIndex" to "0")
@@ -442,7 +447,8 @@ fun speakLongText(
     tts: TextToSpeech?,
     text: String,
     context: Context? = null,
-    forceOnlineMode: Boolean = false
+    forceOnlineMode: Boolean = false,
+    pauseDuration: Long = 100L
 ) {
     if (tts == null) return
 
@@ -479,23 +485,18 @@ fun speakLongText(
     if (sentences.isNotEmpty() && sentences[0].isNotBlank()) {
         val utteranceId = if (sentences.size == 1) "FINAL_PART" else "SENTENCE_0"
         tts.speak(sentences[0], TextToSpeech.QUEUE_FLUSH, null, utteranceId)
-    }
-
-    var currentIndex = 0
-
-    val handler = android.os.Handler(android.os.Looper.getMainLooper())
-    val runnable = object : Runnable {
-        override fun run() {
-            currentIndex++
-            if (currentIndex < sentences.size && sentences[currentIndex].isNotBlank()) {
-                val utteranceId = if (currentIndex == sentences.size - 1) "FINAL_PART" else "SENTENCE_$currentIndex"
-                tts.speak(sentences[currentIndex], TextToSpeech.QUEUE_ADD, null, utteranceId)
-                handler.postDelayed(this, 100)
+        
+        for (i in 1 until sentences.size) {
+            val sentence = sentences[i]
+            if (sentence.isNotBlank()) {
+                if (pauseDuration > 0) {
+                    tts.playSilentUtterance(pauseDuration, TextToSpeech.QUEUE_ADD, "PAUSE_$i")
+                }
+                val currentUtteranceId = if (i == sentences.size - 1) "FINAL_PART" else "SENTENCE_$i"
+                tts.speak(sentence, TextToSpeech.QUEUE_ADD, null, currentUtteranceId)
             }
         }
     }
-
-    handler.postDelayed(runnable, 500)
 }
 
 fun handleTtsButtonClick(
@@ -512,7 +513,9 @@ fun handleTtsButtonClick(
     onTextProcessed: (String) -> Unit,
     onSetOcrLu: () -> Unit,
     preGrayTTSAdjust: Float,
-    onOcrEmptyWarning: ((Boolean) -> Unit)? = null
+    pauseDuration: Long = 100L,
+    onOcrEmptyWarning: ((Boolean) -> Unit)? = null,
+    isDoublePageMode: Boolean = false // NOUVEAU
 ) {
     if (isSpeaking) {
         
@@ -523,15 +526,37 @@ fun handleTtsButtonClick(
         onSetOcrLu()
 
         val verticalTolerance = 60
-        val horizontalTolerance = 40
+        val horizontalTolerance = 80 // Augmenté pour mieux regrouper les colonnes
         val selectedRects = selectedRectIndices
             .map { rectangles[it] }
             .sortedWith { r1, r2 ->
-                val dx = kotlin.math.abs(r1.left - r2.left)
-                if (dx <= horizontalTolerance) {
-                    r1.top - r2.top
+                if (isDoublePageMode && originalDisplayBitmap != null) {
+                    val mid = originalDisplayBitmap.height / 2
+                    // Rotation 90° : Page 1 est en haut, Page 2 est en bas
+                    val p1 = if (r1.centerY() < mid) 0 else 1 
+                    val p2 = if (r2.centerY() < mid) 0 else 1
+                    
+                    if (p1 != p2) {
+                        p1 - p2 // Page 1 avant Page 2
+                    } else {
+                        // Dans la même page tournée de 90° :
+                        // On trie de DROITE à GAUCHE (X décroissant) puis de HAUT en BAS (Y croissant)
+                        // comme demandé: "horizontalement de droite à gauche et de haut en bas"
+                        val dx = kotlin.math.abs(r1.right - r2.right)
+                        if (dx <= horizontalTolerance) {
+                            r1.top - r2.top
+                        } else {
+                            r2.right - r1.right
+                        }
+                    }
                 } else {
-                    r1.left - r2.left
+                    // Mode simple : Colonne par colonne (Gauche vers Droite), puis Haut vers Bas
+                    val dx = kotlin.math.abs(r1.left - r2.left)
+                    if (dx <= horizontalTolerance) {
+                        r1.top - r2.top
+                    } else {
+                        r1.left - r2.left
+                    }
                 }
             }
 
@@ -552,63 +577,52 @@ fun handleTtsButtonClick(
             originalDisplayBitmap
         }
 
+        val results = arrayOfNulls<String>(selectedRects.size)
         var pending = selectedRects.size
-        val collectedText = StringBuilder()
 
-        selectedRects.forEach { rect ->
+        selectedRects.forEachIndexed { index, rect ->
             val safeLeft = rect.left.coerceAtLeast(0)
             val safeTop = rect.top.coerceAtLeast(0)
             val safeWidth = rect.width().coerceAtMost(originalDisplayBitmap!!.width - safeLeft)
             val safeHeight = rect.height().coerceAtMost(originalDisplayBitmap!!.height - safeTop)
 
             if (safeWidth <= 0 || safeHeight <= 0) {
+                results[index] = ""
                 pending--
-                return@forEach
+                return@forEachIndexed
             }
 
-            val cropped = Bitmap.createBitmap(
-                preprocessedBitmap,
-                safeLeft,
-                safeTop,
-                safeWidth,
-                safeHeight
-            )
-
-            val image = InputImage.fromBitmap(cropped, 0)
-
-            OcrProcessor.extractTextFromRectangle(preprocessedBitmap, rect, 0) { extractedText ->
-                collectedText.appendLine(extractedText)
+            // Si double page, on signale à ML Kit que le texte est tourné de 90° CW
+            val rotation = if (isDoublePageMode) 90 else 0
+            OcrProcessor.extractTextFromRectangle(preprocessedBitmap, rect, rotation) { extractedText ->
+                results[index] = extractedText
                 pending--
 
                 if (pending == 0) {
-                    val finalText = cleanOcrTextForTts(collectedText.toString())
+                    val fullText = results.filterNotNull().joinToString("\n")
+                    val finalText = cleanOcrTextForTts(fullText)
 
-                    if (pending == 0) {
-                        val finalText = cleanOcrTextForTts(collectedText.toString())
+                    if (finalText.isNotBlank()) {
+                        onTextProcessed(finalText)
+                        onSpeechStateChange(true)
 
-                        if (finalText.isNotBlank()) {
-                            onTextProcessed(finalText)
-                            onSpeechStateChange(true)
-
-                            if (detectedTtsLocale == null) {
-                                detectLanguageAndSetTts(finalText, tts) { locale ->
-                                    onLocaleDetected(locale)
-                                    tts?.language = locale
-                                    tts?.setSpeechRate(speechRate)
-                                    onPageAdvanceReset()
-                                    speakLongText(tts, finalText, context = null)
-                                }
-                            } else {
-                                tts?.language = detectedTtsLocale
+                        if (detectedTtsLocale == null) {
+                            detectLanguageAndSetTts(finalText, tts) { locale ->
+                                onLocaleDetected(locale)
+                                tts?.language = locale
                                 tts?.setSpeechRate(speechRate)
                                 onPageAdvanceReset()
-                                speakLongText(tts, finalText, context = null)
+                                speakLongText(tts, finalText, context = null, forceOnlineMode = false, pauseDuration = pauseDuration)
                             }
                         } else {
-                            
-                            onOcrEmptyWarning?.invoke(true)
-                            onSpeechStateChange(false)
+                            tts?.language = detectedTtsLocale
+                            tts?.setSpeechRate(speechRate)
+                            onPageAdvanceReset()
+                            speakLongText(tts, finalText, context = null, forceOnlineMode = false, pauseDuration = pauseDuration)
                         }
+                    } else {
+                        onOcrEmptyWarning?.invoke(true)
+                        onSpeechStateChange(false)
                     }
                 }
             }
@@ -619,23 +633,23 @@ fun handleTtsButtonClick(
 
     @Composable
     fun FlipScreenButton() {
-        
-        val (isFlipped, setIsFlipped) = remember { mutableStateOf(false) }
+        // État sauvegardé pour survivre au redémarrage de l'activité
+        val (isFlipped, setIsFlipped) = androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
         val context = LocalContext.current
 
         IconButton(onClick = {
             val newState = !isFlipped
             setIsFlipped(newState)
 
+            // Trouver l'activité (on tente le cast direct car tu as dit que ça marchait ainsi)
             val activity = context as? ComponentActivity
             activity?.let {
-                if (newState) {
-                    
-                    it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+                it.requestedOrientation = if (newState) {
+                    ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
                 } else {
-                    
-                    it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                 }
+                Log.d("ROTATION_DEBUG", "Rotation demandée : ${it.requestedOrientation} (flipped=$newState)")
             }
         }) {
             Icon(
@@ -683,8 +697,10 @@ fun handleTtsButtonClick(
         onPageAdvanceReset: () -> Unit,
         onTextProcessed: (String) -> Unit,
         onSetOcrLu: () -> Unit,
+        pauseDuration: Long = 100L,
         onOcrEmptyWarning: ((Boolean) -> Unit)? = null,
-        context: Context? = null
+        context: Context? = null,
+        isDoublePageMode: Boolean = false // NOUVEAU
     ) {
         if (selectedRectIndices.isEmpty()) {
             
@@ -707,7 +723,9 @@ fun handleTtsButtonClick(
             onTextProcessed = onTextProcessed,
             onSetOcrLu = onSetOcrLu,
             preGrayTTSAdjust = preGrayTTSAdjust,
-            onOcrEmptyWarning = onOcrEmptyWarning
+            pauseDuration = pauseDuration,
+            onOcrEmptyWarning = onOcrEmptyWarning,
+            isDoublePageMode = isDoublePageMode
         )
 
 }

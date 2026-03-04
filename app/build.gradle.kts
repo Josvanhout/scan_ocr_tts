@@ -20,8 +20,8 @@ android {
         minSdk = 30
         targetSdk = 34  // ↓ Réduit aussi
 
-        versionCode = 30
-        versionName = "2.0.91-beta"
+        versionCode = 32
+        versionName = "2.2.0-beta"
         resourceConfigurations += setOf("fr", "en", "es", "xxhdpi")
 
         // 🎯 OPTIMISATION RESSOURCES

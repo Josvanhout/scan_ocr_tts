@@ -13,6 +13,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 
 @Composable
 fun OcrScreenFromPdf(
@@ -24,11 +31,14 @@ fun OcrScreenFromPdf(
     val prefs = context.applicationContext.getSharedPreferences("ocr_settings", Context.MODE_PRIVATE)
 
     var useHighRes by remember { mutableStateOf(false) }
-    var highResScaleFactor by rememberSaveable { mutableStateOf(1.3f) }
+    var highResScaleFactor by rememberSaveable { mutableStateOf(prefs.getFloat("highResScaleFactor", 1.3f)) }
 
     var imageFile by remember { mutableStateOf<File?>(null) }
     var currentPageIndex by remember { mutableStateOf(0) }
     var totalPages by remember { mutableStateOf(1) }
+
+    var isDoublePageMode by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(true) }
 
     var thresholdBias by remember { mutableStateOf(prefs.getFloat("thresholdBias", 50f)) }
     var rectPadding by remember { mutableStateOf(prefs.getFloat("rectPadding", 12f)) }
@@ -49,34 +59,37 @@ fun OcrScreenFromPdf(
         }
     }
 
-    // Charger la valeur sauvegardée au démarrage
-    LaunchedEffect(Unit) {
-        highResScaleFactor = prefs.getFloat("highResScaleFactor", 1.3f)
-    }
-
-    LaunchedEffect(pdfUri, currentPageIndex, useHighRes, highResScaleFactor) {  // ← AJOUTER useHighRes
+    LaunchedEffect(pdfUri, currentPageIndex, useHighRes, highResScaleFactor, isDoublePageMode) {
         pdfUri?.let { uri ->
             try {
                 Log.d("PAGE_TRACE", "RENDER start pageIndex=$currentPageIndex uri=$uri")
 
                 // Utiliser un contexte de coroutine approprié pour les opérations lourdes
+                withContext(Dispatchers.Main) {
+                    isLoading = true
+                }
+                
                 withContext(Dispatchers.IO) {
                     val (file, pageCount) = renderPdfPageToFile(
                         context,
                         uri,
                         currentPageIndex,
                         useHighRes,
-                        highResScaleFactor
+                        highResScaleFactor,
+                        isDoublePageMode
                     )
 
                     // Revenir sur le thread principal pour mettre à jour l'état
                     withContext(Dispatchers.Main) {
                         imageFile = file
                         totalPages = pageCount
+                        isLoading = false
                     }
                 }
 
                 Log.d("PAGE_TRACE", "RENDER done pageIndex=$currentPageIndex")
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e // Propager l'annulation de la coroutine normalement
             } catch (e: Exception) {
                 Log.e("NAV_DEBUG", "Erreur rendu page PDF", e)
             }
@@ -87,10 +100,11 @@ fun OcrScreenFromPdf(
 
 
 
-    imageFile?.let { file ->
-        Log.d("PDF_FLOW", "Opening OcrScreen FROM PDF with uri=$pdfUri page=$currentPageIndex")
+    Box(modifier = Modifier.fillMaxSize()) {
+        imageFile?.let { file ->
+            Log.d("PDF_FLOW", "Opening OcrScreen FROM PDF with uri=$pdfUri page=$currentPageIndex")
 
-        OcrScreen(
+            OcrScreen(
             imageFile = file,
             pdfIdentity = pdfUri.toString(),
             thresholdBias = thresholdBias,
@@ -129,13 +143,15 @@ fun OcrScreenFromPdf(
 //            },
 
             onPreviousPage = {
+                val step = if (isDoublePageMode) 2 else 1
                 Log.d("PAGE_TRACE", "CLICK < : currentPageIndex(before)=$currentPageIndex")
-                if (currentPageIndex > 0) currentPageIndex--
+                if (currentPageIndex > 0) currentPageIndex = maxOf(0, currentPageIndex - step)
                 Log.d("PAGE_TRACE", "CLICK < : currentPageIndex(after)=$currentPageIndex")
             },
             onNextPage = {
+                val step = if (isDoublePageMode) 2 else 1
                 Log.d("PAGE_TRACE", "CLICK > : currentPageIndex(before)=$currentPageIndex totalPages=$totalPages")
-                if (currentPageIndex < totalPages - 1) currentPageIndex++
+                if (currentPageIndex < totalPages - 1) currentPageIndex = minOf(totalPages - 1, currentPageIndex + step)
                 Log.d("PAGE_TRACE", "CLICK > : currentPageIndex(after)=$currentPageIndex")
             },
             onGoToPage = { pageIndex ->
@@ -151,10 +167,26 @@ fun OcrScreenFromPdf(
                 highResScaleFactor = newScale
                 prefs.edit().putFloat("highResScaleFactor", newScale).apply()
             },
+            isDoublePageMode = isDoublePageMode,
+            onDoublePageModeChange = { isDoublePageMode = it }
 
 
         )
     }
+    
+    if (isLoading) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f)),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(
+                color = Color.White
+            )
+        }
+    }
+  }
 }
 
 private fun renderPdfPageToFile(
@@ -162,43 +194,78 @@ private fun renderPdfPageToFile(
     uri: Uri,
     pageIndex: Int,
     useHighRes: Boolean,
-    highResScaleFactor: Float  // ← NOUVEAU paramètre
+    highResScaleFactor: Float,
+    isDoublePageMode: Boolean
 ): Pair<File, Int> {
     val fileDescriptor = context.contentResolver.openFileDescriptor(uri, "r")!!
     val renderer = PdfRenderer(fileDescriptor)
     val pageCount = renderer.pageCount
-    val page = renderer.openPage(pageIndex)
 
-    // TEST SIMPLE : juste augmenter de 2x
     val scaleFactor = if (useHighRes) highResScaleFactor else 1.0f
-    Log.d("PDF_RENDER", "Rendering page $pageIndex with scaleFactor=$scaleFactor (useHighRes=$useHighRes, highResScaleFactor=$highResScaleFactor)")
-    val bitmap = Bitmap.createBitmap(
-        (page.width * scaleFactor).toInt(),  // ← CHANGEMENT
-        (page.height * scaleFactor).toInt(), // ← CHANGEMENT
-        Bitmap.Config.ARGB_8888
-    )
+    
+    val finalBitmap: Bitmap
+    
+    if (isDoublePageMode && pageIndex + 1 < pageCount) {
+        val page1 = renderer.openPage(pageIndex)
+        val w1 = (page1.width * scaleFactor).toInt()
+        val h1 = (page1.height * scaleFactor).toInt()
+        val b1 = Bitmap.createBitmap(w1, h1, Bitmap.Config.ARGB_8888)
+        val mat1 = Matrix().apply { postScale(scaleFactor, scaleFactor) }
+        val canv1 = android.graphics.Canvas(b1)
+        canv1.drawColor(android.graphics.Color.WHITE)
+        page1.render(b1, null, mat1, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
+        page1.close()
 
-    val canvas = android.graphics.Canvas(bitmap)
-    canvas.drawColor(android.graphics.Color.WHITE)
+        val page2 = renderer.openPage(pageIndex + 1)
+        val w2 = (page2.width * scaleFactor).toInt()
+        val h2 = (page2.height * scaleFactor).toInt()
+        val b2 = Bitmap.createBitmap(w2, h2, Bitmap.Config.ARGB_8888)
+        val mat2 = Matrix().apply { postScale(scaleFactor, scaleFactor) }
+        val canv2 = android.graphics.Canvas(b2)
+        canv2.drawColor(android.graphics.Color.WHITE)
+        page2.render(b2, null, mat2, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
+        page2.close()
 
-    // IMPORTANT : ajouter une matrice pour l'échelle
-    val matrix = Matrix().apply {
-        postScale(scaleFactor, scaleFactor)
+        val compWidth = w1 + w2
+        val compHeight = maxOf(h1, h2)
+        val compoBitmap = Bitmap.createBitmap(compWidth, compHeight, Bitmap.Config.ARGB_8888)
+        val c = android.graphics.Canvas(compoBitmap)
+        c.drawColor(android.graphics.Color.WHITE)
+        c.drawBitmap(b1, 0f, 0f, null)
+        c.drawBitmap(b2, w1.toFloat(), 0f, null)
+        
+        b1.recycle()
+        b2.recycle()
+        
+        // Rotation physique de 90° comme demandé par l'utilisateur
+        val m = Matrix().apply { postRotate(90f) }
+        finalBitmap = Bitmap.createBitmap(compoBitmap, 0, 0, compoBitmap.width, compoBitmap.height, m, true)
+        if (finalBitmap != compoBitmap) compoBitmap.recycle()
+        
+    } else {
+        val page = renderer.openPage(pageIndex)
+        finalBitmap = Bitmap.createBitmap(
+            (page.width * scaleFactor).toInt(),
+            (page.height * scaleFactor).toInt(),
+            Bitmap.Config.ARGB_8888
+        )
+        val canvas = android.graphics.Canvas(finalBitmap)
+        canvas.drawColor(android.graphics.Color.WHITE)
+        val matrix = Matrix().apply { postScale(scaleFactor, scaleFactor) }
+        page.render(finalBitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
+        page.close()
     }
 
-    page.render(bitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_PRINT) // ← CHANGEMENT (ajout matrix)
-
-    page.close()
     renderer.close()
     fileDescriptor.close()
 
-    val file = File(context.cacheDir, "pdf_page_$pageIndex.png")
+    val suffix = if (isDoublePageMode) "double" else "single"
+    val file = File(context.cacheDir, "pdf_page_${pageIndex}_$suffix.png")
     FileOutputStream(file).use {
-        bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+        finalBitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
     }
 
-    // Nettoyer
-    bitmap.recycle() // ← IMPORTANT à ajouter aussi
+    finalBitmap.recycle()
 
     return Pair(file, pageCount)
 }
